@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  instagram-comments:
+    image: ${DOCKER_IMAGE:-quecreate/instagram-comments:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "51968:51968"
+    environment:
+      - INSTAGRAM_USERNAME=${INSTAGRAM_USERNAME}
+      - INSTAGRAM_PASSWORD=${INSTAGRAM_PASSWORD}
+      - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
+      - APP_SECRET=${APP_SECRET}
+      - BUSINESS_ACCOUNT_ID=${BUSINESS_ACCOUNT_ID}
+    volumes:
+      - instagram_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:51968/debug"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  instagram_data:

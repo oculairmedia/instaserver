@@ -1,0 +1,44 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose.yml
+.docker/
+
+# Logs and databases
+*.log
+*.sqlite
+data/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
