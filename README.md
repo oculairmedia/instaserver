@@ -1,5 +1,7 @@
 # Instagram Comments Manager
 
+A web-based tool for managing Instagram comments efficiently and securely.
+
 A web application that allows you to manage and respond to Instagram comments through a simple interface.
 
 ## Features
