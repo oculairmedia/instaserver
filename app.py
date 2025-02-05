@@ -2,10 +2,9 @@ import os
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
-from instagrapi import Client
 import json
 
 load_dotenv()
@@ -71,148 +70,92 @@ def notify_letta(username, comment):
         print(f"Error type: {type(e)}")
         return False
 
+def get_instagram_token():
+    """Get Instagram API token"""
+    try:
+        # Get an app access token
+        auth_url = "https://graph.facebook.com/oauth/access_token"
+        params = {
+            "client_id": os.getenv('INSTAGRAM_APP_ID'),
+            "client_secret": os.getenv('APP_SECRET'),
+            "grant_type": "client_credentials"
+        }
+        response = requests.get(auth_url, params=params)
+        if response.status_code == 200:
+            return response.json().get('access_token')
+        return None
+    except Exception as e:
+        print(f"Error getting Instagram token: {e}")
+        return None
+
 def check_for_new_comments():
     """Check for new comments on Instagram posts"""
     global LAST_SEEN_COMMENTS
     
-    # Initialize Instagram client
-    cl = None
-    login_attempts = 0
-    max_login_attempts = 3
-    
-    def ensure_login():
-        nonlocal cl, login_attempts
-        if cl is None or login_attempts >= max_login_attempts:
-            cl = Client()
-            login_attempts = 0
-        
-        try:
-            if not cl.user_id:
-                # Set up session settings
-                cl.set_settings({
-                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "device_settings": {
-                        "app_version": "269.0.0.18.75",
-                        "android_version": 26,
-                        "android_release": "8.0.0",
-                        "dpi": "480dpi",
-                        "resolution": "1080x1920",
-                        "manufacturer": "OnePlus",
-                        "device": "OnePlus5",
-                        "model": "ONEPLUS A5000",
-                        "cpu": "qcom"
-                    }
-                })
-                
-                # Try to load session from file
-                session_file = "instagram_session.json"
-                if os.path.exists(session_file):
-                    try:
-                        cl.load_settings(session_file)
-                        print("Loaded existing session")
-                        if cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD')):
-                            print("Successfully restored session")
-                            cl.dump_settings(session_file)
-                            return True
-                    except Exception as e:
-                        print(f"Error loading session: {e}")
-                
-                # If no session or session failed, try fresh login
-                print("Attempting fresh login...")
-                if cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD')):
-                    print("Successfully logged in to Instagram")
-                    cl.dump_settings(session_file)
-                    login_attempts = 0
-                    return True
-                
-            return True
-            
-        except Exception as e:
-            print(f"Login attempt failed: {e}")
-            login_attempts += 1
-            if login_attempts >= max_login_attempts:
-                print("Max login attempts reached, waiting 5 minutes...")
-                time.sleep(300)  # Wait 5 minutes before trying again
-                login_attempts = 0
-            return False
-    
     while True:
         try:
-            if not ensure_login():
-                time.sleep(30)
+            # Get access token
+            access_token = get_instagram_token()
+            if not access_token:
+                print("Failed to get access token, retrying in 60 seconds...")
+                time.sleep(60)
+                continue
+            
+            # Get the business account's media
+            url = f"https://graph.facebook.com/v19.0/{os.getenv('BUSINESS_ACCOUNT_ID')}/media"
+            params = {
+                "access_token": access_token,
+                "fields": "id,comments{id,text,username,timestamp}"
+            }
+            
+            print("\nFetching media...")
+            response = requests.get(url, params=params)
+            
+            if response.status_code != 200:
+                print(f"Error getting media: {response.text}")
+                time.sleep(60)
                 continue
                 
-            # Get user's media
-            try:
-                user_id = cl.user_id
-                medias = cl.user_medias(user_id, 20)  # Get last 20 posts
-            except Exception as e:
-                if "challenge_required" in str(e):
-                    print("Instagram security challenge required. Trying to refresh session...")
-                    cl = None  # Force new login next time
-                    time.sleep(60)  # Wait a minute before retry
-                    continue
-                raise e
+            media_list = response.json().get('data', [])
+            print(f"Found {len(media_list)} posts")
             
-            print(f"\nChecking {len(medias)} posts for new comments...")
-            
-            for media in medias:
+            for media in media_list:
                 try:
-                    media_id = str(media.id)
+                    media_id = media['id']
                     print(f"\nChecking media {media_id}")
                     
-                    try:
-                        comments = cl.media_comments(media.id)
-                    except Exception as e:
-                        print(f"Error getting comments for media {media_id}: {e}")
-                        continue
-                        
-                    current_comments = {}
-                    for comment in comments:
-                        try:
-                            current_comments[str(comment.pk)] = {
-                                'id': str(comment.pk),
-                                'text': comment.text,
-                                'username': comment.user.username,
-                                'timestamp': str(comment.created_at_utc)
-                            }
-                        except Exception as e:
-                            print(f"Error processing comment: {e}")
-                            continue
+                    # Get comments for this media
+                    comments = media.get('comments', {}).get('data', [])
+                    print(f"Found {len(comments)} comments")
                     
                     # Initialize if this is the first time seeing this media
                     if media_id not in LAST_SEEN_COMMENTS:
-                        print(f"Initializing tracking for media {media_id}")
-                        print(f"Found {len(current_comments)} comments:")
-                        # Store initial comments with their timestamps
+                        print("Initializing comment tracking")
                         LAST_SEEN_COMMENTS[media_id] = {
-                            comment_id: {
-                                'timestamp': datetime.fromisoformat(comment['timestamp']),
+                            comment['id']: {
+                                'timestamp': datetime.fromisoformat(comment['timestamp'].replace('Z', '+00:00')),
                                 'text': comment['text'],
                                 'username': comment['username']
                             }
-                            for comment_id, comment in current_comments.items()
+                            for comment in comments
                         }
                         continue
                     
                     # Check for new comments
-                    for comment_id, comment in current_comments.items():
-                        comment_timestamp = datetime.fromisoformat(comment['timestamp'])
-                        
-                        # Check if this is a new comment
+                    for comment in comments:
+                        comment_id = comment['id']
                         if comment_id not in LAST_SEEN_COMMENTS[media_id]:
-                            # Only notify about comments made after server start
+                            comment_timestamp = datetime.fromisoformat(comment['timestamp'].replace('Z', '+00:00'))
+                            
+                            # Only notify about comments made in the last minute
                             if comment_timestamp > datetime.now(comment_timestamp.tzinfo) - timedelta(minutes=1):
                                 print(f"\nNew comment detected!")
-                                print(f"Media ID: {media_id}")
-                                print(f"Comment: {comment['text']}")
+                                print(f"Text: {comment['text']}")
                                 print(f"By: {comment['username']}")
                                 print(f"At: {comment_timestamp}")
                                 
                                 # Send notification to Letta
                                 notify_letta(comment['username'], comment['text'])
-                            else:
-                                print(f"Found existing comment: {comment['text']} by {comment['username']} at {comment_timestamp}")
                             
                             # Update last seen comments
                             LAST_SEEN_COMMENTS[media_id][comment_id] = {
@@ -220,18 +163,16 @@ def check_for_new_comments():
                                 'text': comment['text'],
                                 'username': comment['username']
                             }
-                            
+                    
                 except Exception as e:
                     print(f"Error processing media {media_id}: {e}")
                     continue
             
         except Exception as e:
             print(f"Error in comment checking loop: {e}")
-            time.sleep(30)  # Wait before retrying
-            continue
         
         # Wait before next check
-        time.sleep(30)  # Check every 30 seconds
+        time.sleep(30)
 
 @app.route('/')
 def index():
@@ -245,98 +186,9 @@ def index():
 def debug():
     """Debug endpoint"""
     return jsonify({
-        'username': os.getenv('INSTAGRAM_USERNAME'),
         'tracked_media': len(LAST_SEEN_COMMENTS),
         'total_comments': sum(len(comments) for comments in LAST_SEEN_COMMENTS.values())
     })
-
-@app.route('/test/comment', methods=['POST'])
-def test_comment():
-    """Test endpoint to post a comment"""
-    try:
-        data = request.get_json()
-        if not data or 'media_id' not in data or 'text' not in data:
-            return jsonify({
-                "error": "Required fields: media_id, text"
-            }), 400
-
-        media_id = data['media_id']
-        text = data['text']
-
-        # Initialize Instagram client
-        cl = Client()
-        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
-        print(f"Logged in to Instagram as {os.getenv('INSTAGRAM_USERNAME')}")
-
-        # Post the comment
-        print(f"Posting comment on media {media_id}")
-        print(f"Comment text: {text}")
-        
-        result = cl.media_comment(
-            media_id=media_id,
-            text=text
-        )
-        
-        print("Comment posted successfully:", result)
-        
-        return jsonify({
-            "success": True,
-            "comment": {
-                "id": str(result.pk),
-                "text": result.text,
-                "username": result.user.username,
-                "timestamp": str(result.created_at_utc)
-            }
-        })
-
-    except Exception as e:
-        print(f"Error posting comment: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/test/reply', methods=['POST'])
-def test_reply():
-    """Test endpoint to reply to a comment"""
-    try:
-        data = request.get_json()
-        if not data or 'media_id' not in data or 'comment_id' not in data or 'reply_text' not in data:
-            return jsonify({
-                "error": "Required fields: media_id, comment_id, reply_text"
-            }), 400
-
-        media_id = data['media_id']
-        comment_id = data['comment_id']
-        reply_text = data['reply_text']
-
-        # Initialize Instagram client
-        cl = Client()
-        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
-        print(f"Logged in to Instagram as {os.getenv('INSTAGRAM_USERNAME')}")
-
-        # Reply to the comment
-        print(f"Replying to comment {comment_id} on media {media_id}")
-        print(f"Reply text: {reply_text}")
-        
-        result = cl.media_comment(
-            media_id=media_id,
-            text=reply_text,
-            replied_to_comment_id=comment_id
-        )
-        
-        print("Reply posted successfully:", result)
-        
-        return jsonify({
-            "success": True,
-            "reply": {
-                "id": str(result.pk),
-                "text": result.text,
-                "username": result.user.username,
-                "timestamp": str(result.created_at_utc)
-            }
-        })
-
-    except Exception as e:
-        print(f"Error replying to comment: {e}")
-        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Start the comment monitoring thread
