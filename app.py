@@ -9,9 +9,10 @@ import json
 from datetime import datetime
 from collections import OrderedDict
 
-# Cache to store recently processed comment IDs
+# Cache to store recently processed comment IDs and Instagram account info
 PROCESSED_COMMENTS = OrderedDict()
 MAX_CACHE_SIZE = 1000  # Maximum number of comment IDs to store
+INSTAGRAM_ACCOUNT_ID = None  # Will be set at startup
 
 def add_processed_comment(comment_id):
     """Add a comment ID to the processed cache and maintain size limit"""
@@ -72,6 +73,10 @@ def get_instagram_account_info():
             if 'instagram_business_account' in page:
                 insta_account = page['instagram_business_account']
                 logger.info(f"Found Instagram Business Account in page: {page['name']}")
+                # Store the Instagram account ID globally
+                global INSTAGRAM_ACCOUNT_ID
+                INSTAGRAM_ACCOUNT_ID = insta_account['id']
+                
                 return {
                     'id': insta_account['id'],
                     'username': insta_account['username'],
@@ -302,8 +307,19 @@ def webhook_handle():
                             
                             if username and text:
                                 comment_id = comment_data.get('id')
+                                media_id = comment_data.get('media', {}).get('id')
+                                
                                 if not comment_id:
                                     logger.warning("Comment data missing ID")
+                                    continue
+                                
+                                if not media_id:
+                                    logger.warning("Comment data missing media ID")
+                                    continue
+                                
+                                # Verify this comment is for our Instagram account
+                                if INSTAGRAM_ACCOUNT_ID and not media_id.startswith(INSTAGRAM_ACCOUNT_ID):
+                                    logger.warning(f"Skipping comment for different Instagram account. Expected: {INSTAGRAM_ACCOUNT_ID}, Got: {media_id}")
                                     continue
                                     
                                 if is_comment_processed(comment_id):
