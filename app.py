@@ -19,9 +19,15 @@ logger = logging.getLogger(__name__)
 # Get Instagram account details using Graph API
 def get_instagram_account_info():
     try:
+        # Get the business account ID from environment
+        business_id = os.getenv('BUSINESS_ACCOUNT_ID')
         app_id = os.getenv('INSTAGRAM_APP_ID')
         app_secret = os.getenv('APP_SECRET')
         
+        if not business_id:
+            logger.error("BUSINESS_ACCOUNT_ID not set in environment")
+            return None
+            
         # Get app access token
         token_url = f"https://graph.facebook.com/oauth/access_token"
         token_params = {
@@ -30,30 +36,36 @@ def get_instagram_account_info():
             "grant_type": "client_credentials"
         }
         token_response = requests.get(token_url, params=token_params)
-        access_token = token_response.json().get('access_token')
         
-        if not access_token:
-            logger.error("Failed to get access token")
+        if token_response.status_code != 200:
+            logger.error(f"Failed to get access token. Status: {token_response.status_code}")
+            logger.error(f"Response: {token_response.text}")
             return None
             
-        # Get Instagram Business Account info
-        account_url = f"https://graph.facebook.com/v19.0/me/accounts"
+        access_token = token_response.json().get('access_token')
+        if not access_token:
+            logger.error("No access token in response")
+            return None
+            
+        # Get Instagram Business Account info directly
+        account_url = f"https://graph.facebook.com/v19.0/{business_id}"
         account_params = {
             "access_token": access_token,
-            "fields": "connected_instagram_account{id,name,username,profile_picture_url}"
+            "fields": "id,username,name,profile_picture_url"
         }
         
         response = requests.get(account_url, params=account_params)
-        data = response.json()
         
-        if 'data' in data and data['data']:
-            for page in data['data']:
-                if 'connected_instagram_account' in page:
-                    return page['connected_instagram_account']
+        if response.status_code != 200:
+            logger.error(f"Failed to get account info. Status: {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            return None
+            
+        return response.json()
         
-        return None
     except Exception as e:
         logger.error(f"Error getting Instagram account info: {e}")
+        logger.error(f"Error type: {type(e)}")
         return None
 
 # Log all environment variables and account info at startup
@@ -63,6 +75,7 @@ def log_config():
         'INSTAGRAM_APP_ID',
         'APP_SECRET',
         'WEBHOOK_VERIFY_TOKEN',
+        'BUSINESS_ACCOUNT_ID',
         'PORT'
     ]
     for var in env_vars:

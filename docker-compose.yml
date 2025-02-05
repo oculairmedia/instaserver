@@ -9,6 +9,7 @@ services:
       - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
       - APP_SECRET=${APP_SECRET}
       - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN}
+      - BUSINESS_ACCOUNT_ID=${BUSINESS_ACCOUNT_ID}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:54068/debug"]
