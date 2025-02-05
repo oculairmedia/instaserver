@@ -19,33 +19,44 @@ logger = logging.getLogger(__name__)
 # Get Instagram account details using Graph API
 def get_instagram_account_info():
     try:
-        # Get the business account ID and access token from environment
-        business_id = os.getenv('BUSINESS_ACCOUNT_ID')
         access_token = os.getenv('FACEBOOK_ACCESS_TOKEN')
         
-        if not business_id:
-            logger.error("BUSINESS_ACCOUNT_ID not set in environment")
-            return None
-            
         if not access_token:
             logger.error("FACEBOOK_ACCESS_TOKEN not set in environment")
             return None
             
-        # Get Instagram Business Account info directly
-        account_url = f"https://graph.facebook.com/v19.0/{business_id}"
-        account_params = {
+        # First, get the Facebook Pages
+        logger.info("Getting Facebook Pages...")
+        pages_url = "https://graph.facebook.com/v19.0/me/accounts"
+        pages_params = {
             "access_token": access_token,
-            "fields": "id,username,name,profile_picture_url"
+            "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
         }
         
-        response = requests.get(account_url, params=account_params)
+        pages_response = requests.get(pages_url, params=pages_params)
         
-        if response.status_code != 200:
-            logger.error(f"Failed to get account info. Status: {response.status_code}")
-            logger.error(f"Response: {response.text}")
+        if pages_response.status_code != 200:
+            logger.error(f"Failed to get pages. Status: {pages_response.status_code}")
+            logger.error(f"Response: {pages_response.text}")
             return None
             
-        return response.json()
+        pages_data = pages_response.json()
+        logger.debug(f"Pages response: {json.dumps(pages_data, indent=2)}")
+        
+        # Look for the page with an Instagram Business Account
+        for page in pages_data.get('data', []):
+            if 'instagram_business_account' in page:
+                insta_account = page['instagram_business_account']
+                logger.info(f"Found Instagram Business Account in page: {page['name']}")
+                return {
+                    'id': insta_account['id'],
+                    'username': insta_account['username'],
+                    'name': page['name'],
+                    'profile_picture_url': insta_account.get('profile_picture_url')
+                }
+        
+        logger.error("No Instagram Business Account found in any Facebook Page")
+        return None
         
     except Exception as e:
         logger.error(f"Error getting Instagram account info: {e}")
