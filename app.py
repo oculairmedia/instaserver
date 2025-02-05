@@ -40,20 +40,35 @@ def notify_letta(username, comment):
     }
     
     print(f"\n=== Sending Letta Notification ===")
+    print(f"URL: {url}")
+    print(f"Headers: {json.dumps(headers, indent=2)}")
+    print(f"Data: {json.dumps(data, indent=2)}")
     print(f"Message: New Instagram comment from @{username}: {comment}")
     
     # Send the request
     try:
+        print("\nSending request to Letta...")
         response = requests.post(url, json=data, headers=headers, timeout=10)
-        print(f"Letta response status: {response.status_code}")
+        print(f"Response status: {response.status_code}")
+        print(f"Response headers: {dict(response.headers)}")
+        print(f"Response body: {response.text[:500]}")  # First 500 chars
+        
         if response.status_code == 200:
             print("Successfully sent notification to Letta")
             return True
         else:
             print(f"Failed to send notification. Status code: {response.status_code}")
+            print(f"Error response: {response.text}")
             return False
+    except requests.exceptions.Timeout:
+        print("Timeout error when sending notification to Letta")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"Network error when sending notification to Letta: {e}")
+        return False
     except Exception as e:
-        print(f"Error sending Letta notification: {e}")
+        print(f"Unexpected error when sending notification to Letta: {e}")
+        print(f"Error type: {type(e)}")
         return False
 
 def check_for_new_comments():
@@ -126,26 +141,42 @@ def check_for_new_comments():
                     if media_id not in LAST_SEEN_COMMENTS:
                         print(f"Initializing tracking for media {media_id}")
                         print(f"Found {len(current_comments)} comments:")
-                        for comment_id, comment in current_comments.items():
-                            print(f"- Comment ID: {comment_id}")
-                            print(f"  Text: {comment['text']}")
-                            print(f"  By: {comment['username']}")
-                        LAST_SEEN_COMMENTS[media_id] = current_comments
+                        # Store initial comments with their timestamps
+                        LAST_SEEN_COMMENTS[media_id] = {
+                            comment_id: {
+                                'timestamp': datetime.fromisoformat(comment['timestamp']),
+                                'text': comment['text'],
+                                'username': comment['username']
+                            }
+                            for comment_id, comment in current_comments.items()
+                        }
                         continue
                     
                     # Check for new comments
                     for comment_id, comment in current_comments.items():
+                        comment_timestamp = datetime.fromisoformat(comment['timestamp'])
+                        
+                        # Check if this is a new comment
                         if comment_id not in LAST_SEEN_COMMENTS[media_id]:
-                            print(f"\nNew comment detected!")
-                            print(f"Media ID: {media_id}")
-                            print(f"Comment: {comment['text']}")
-                            print(f"By: {comment['username']}")
-                            
-                            # Send notification to Letta
-                            notify_letta(comment['username'], comment['text'])
+                            # Only notify about comments made after server start
+                            if comment_timestamp > datetime.now(comment_timestamp.tzinfo) - timedelta(minutes=1):
+                                print(f"\nNew comment detected!")
+                                print(f"Media ID: {media_id}")
+                                print(f"Comment: {comment['text']}")
+                                print(f"By: {comment['username']}")
+                                print(f"At: {comment_timestamp}")
+                                
+                                # Send notification to Letta
+                                notify_letta(comment['username'], comment['text'])
+                            else:
+                                print(f"Found existing comment: {comment['text']} by {comment['username']} at {comment_timestamp}")
                             
                             # Update last seen comments
-                            LAST_SEEN_COMMENTS[media_id][comment_id] = comment
+                            LAST_SEEN_COMMENTS[media_id][comment_id] = {
+                                'timestamp': comment_timestamp,
+                                'text': comment['text'],
+                                'username': comment['username']
+                            }
                             
                 except Exception as e:
                     print(f"Error processing media {media_id}: {e}")
