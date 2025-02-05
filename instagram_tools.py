@@ -1,6 +1,5 @@
 import json
 import requests
-import os
 
 def reply_to_instagram_comment(params_json: str) -> str:
     """
@@ -30,7 +29,7 @@ def reply_to_instagram_comment(params_json: str) -> str:
             return f"Error: Missing required fields: {', '.join(missing_fields)}"
         
         # Configuration
-        BASE_URL = os.environ.get("INSTASERVER_URL", "http://localhost:52810")
+        BASE_URL = "http://100.93.254.12:52810"
         
         # Prepare request
         url = f"{BASE_URL}/test/reply"
@@ -94,7 +93,7 @@ def post_instagram_comment(params_json: str) -> str:
             return f"Error: Missing required fields: {', '.join(missing_fields)}"
         
         # Configuration
-        BASE_URL = os.environ.get("INSTASERVER_URL", "http://localhost:52810")
+        BASE_URL = "http://100.93.254.12:52810"
         
         # Prepare request
         url = f"{BASE_URL}/test/comment"
