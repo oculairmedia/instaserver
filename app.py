@@ -61,16 +61,37 @@ def check_for_new_comments():
     global LAST_SEEN_COMMENTS
     
     # Initialize Instagram client
-    cl = Client()
-    try:
-        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
-        print("Successfully logged in to Instagram")
-    except Exception as e:
-        print(f"Failed to login to Instagram: {e}")
-        return
+    cl = None
+    login_attempts = 0
+    max_login_attempts = 3
+    
+    def ensure_login():
+        nonlocal cl, login_attempts
+        if cl is None or login_attempts >= max_login_attempts:
+            cl = Client()
+            login_attempts = 0
+        
+        try:
+            if not cl.user_id:
+                cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
+                print("Successfully logged in to Instagram")
+                login_attempts = 0
+            return True
+        except Exception as e:
+            print(f"Login attempt failed: {e}")
+            login_attempts += 1
+            if login_attempts >= max_login_attempts:
+                print("Max login attempts reached, waiting 5 minutes...")
+                time.sleep(300)  # Wait 5 minutes before trying again
+                login_attempts = 0
+            return False
     
     while True:
         try:
+            if not ensure_login():
+                time.sleep(30)
+                continue
+                
             # Get user's media
             user_id = cl.user_id
             medias = cl.user_medias(user_id, 20)  # Get last 20 posts
@@ -78,51 +99,62 @@ def check_for_new_comments():
             print(f"\nChecking {len(medias)} posts for new comments...")
             
             for media in medias:
-                media_id = str(media.id)
-                comments = cl.media_comments(media.id)
-                current_comments = {
-                    str(comment.pk): {
-                        'id': str(comment.pk),
-                        'text': comment.text,
-                        'username': comment.user.username,
-                        'timestamp': str(comment.created_at_utc)
-                    }
-                    for comment in comments
-                }
-                
-                # Initialize if this is the first time seeing this media
-                if media_id not in LAST_SEEN_COMMENTS:
-                    print(f"\nInitializing tracking for media {media_id}")
-                    print(f"Found {len(current_comments)} comments:")
+                try:
+                    media_id = str(media.id)
+                    print(f"\nChecking media {media_id}")
+                    
+                    try:
+                        comments = cl.media_comments(media.id)
+                    except Exception as e:
+                        print(f"Error getting comments for media {media_id}: {e}")
+                        continue
+                        
+                    current_comments = {}
                     for comment in comments:
-                        print(f"- Comment ID: {comment.pk}")
-                        print(f"  Text: {comment.text}")
-                        print(f"  By: {comment.user.username}")
-                    LAST_SEEN_COMMENTS[media_id] = current_comments
+                        try:
+                            current_comments[str(comment.pk)] = {
+                                'id': str(comment.pk),
+                                'text': comment.text,
+                                'username': comment.user.username,
+                                'timestamp': str(comment.created_at_utc)
+                            }
+                        except Exception as e:
+                            print(f"Error processing comment: {e}")
+                            continue
+                    
+                    # Initialize if this is the first time seeing this media
+                    if media_id not in LAST_SEEN_COMMENTS:
+                        print(f"Initializing tracking for media {media_id}")
+                        print(f"Found {len(current_comments)} comments:")
+                        for comment_id, comment in current_comments.items():
+                            print(f"- Comment ID: {comment_id}")
+                            print(f"  Text: {comment['text']}")
+                            print(f"  By: {comment['username']}")
+                        LAST_SEEN_COMMENTS[media_id] = current_comments
+                        continue
+                    
+                    # Check for new comments
+                    for comment_id, comment in current_comments.items():
+                        if comment_id not in LAST_SEEN_COMMENTS[media_id]:
+                            print(f"\nNew comment detected!")
+                            print(f"Media ID: {media_id}")
+                            print(f"Comment: {comment['text']}")
+                            print(f"By: {comment['username']}")
+                            
+                            # Send notification to Letta
+                            notify_letta(comment['username'], comment['text'])
+                            
+                            # Update last seen comments
+                            LAST_SEEN_COMMENTS[media_id][comment_id] = comment
+                            
+                except Exception as e:
+                    print(f"Error processing media {media_id}: {e}")
                     continue
-                
-                # Check for new comments
-                for comment_id, comment in current_comments.items():
-                    if comment_id not in LAST_SEEN_COMMENTS[media_id]:
-                        print(f"\nNew comment detected!")
-                        print(f"Media ID: {media_id}")
-                        print(f"Comment: {comment['text']}")
-                        print(f"By: {comment['username']}")
-                        
-                        # Send notification to Letta
-                        notify_letta(comment['username'], comment['text'])
-                        
-                        # Update last seen comments
-                        LAST_SEEN_COMMENTS[media_id][comment_id] = comment
             
         except Exception as e:
             print(f"Error in comment checking loop: {e}")
-            # Try to login again in case session expired
-            try:
-                cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
-                print("Re-logged in to Instagram")
-            except:
-                pass
+            time.sleep(30)  # Wait before retrying
+            continue
         
         # Wait before next check
         time.sleep(30)  # Check every 30 seconds
