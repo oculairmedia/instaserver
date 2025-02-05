@@ -7,6 +7,23 @@ from dotenv import load_dotenv
 import requests
 import json
 from datetime import datetime
+from collections import OrderedDict
+
+# Cache to store recently processed comment IDs
+PROCESSED_COMMENTS = OrderedDict()
+MAX_CACHE_SIZE = 1000  # Maximum number of comment IDs to store
+
+def add_processed_comment(comment_id):
+    """Add a comment ID to the processed cache and maintain size limit"""
+    PROCESSED_COMMENTS[comment_id] = datetime.now()
+    if len(PROCESSED_COMMENTS) > MAX_CACHE_SIZE:
+        # Remove oldest entries when cache gets too big
+        while len(PROCESSED_COMMENTS) > MAX_CACHE_SIZE:
+            PROCESSED_COMMENTS.popitem(last=False)
+
+def is_comment_processed(comment_id):
+    """Check if a comment ID has been processed recently"""
+    return comment_id in PROCESSED_COMMENTS
 
 # Set up logging
 logging.basicConfig(
@@ -284,11 +301,24 @@ def webhook_handle():
                             text = comment_data.get('text')
                             
                             if username and text:
+                                comment_id = comment_data.get('id')
+                                if not comment_id:
+                                    logger.warning("Comment data missing ID")
+                                    continue
+                                    
+                                if is_comment_processed(comment_id):
+                                    logger.info(f"Skipping already processed comment {comment_id}")
+                                    continue
+                                    
                                 logger.info(f"New comment detected from @{username}")
                                 logger.info(f"Comment text: {text}")
+                                logger.info(f"Comment ID: {comment_id}")
                                 
                                 # Send notification to Letta
-                                notify_letta(username, text)
+                                if notify_letta(username, text):
+                                    # Only mark as processed if notification was successful
+                                    add_processed_comment(comment_id)
+                                    logger.info(f"Marked comment {comment_id} as processed")
                             else:
                                 logger.warning("Comment data missing username or text")
                                 logger.debug(f"Comment data: {json.dumps(comment_data, indent=2)}")
