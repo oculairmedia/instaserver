@@ -1,10 +1,9 @@
 import os
-from flask import Flask, render_template, request, jsonify
+import hmac
+import hashlib
+from flask import Flask, render_template, request, jsonify, abort
 from dotenv import load_dotenv
 import requests
-from datetime import datetime, timedelta
-import threading
-import time
 import json
 
 load_dotenv()
@@ -12,8 +11,25 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Store last seen comments to detect new ones
-LAST_SEEN_COMMENTS = {}
+def verify_webhook_signature(request_data, signature_header):
+    """Verify that the webhook request came from Instagram"""
+    if not signature_header:
+        return False
+
+    # Get the app secret from environment
+    app_secret = os.getenv('APP_SECRET')
+    if not app_secret:
+        return False
+
+    # Calculate expected signature
+    expected_signature = hmac.new(
+        app_secret.encode('utf-8'),
+        msg=request_data,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+
+    # Compare signatures
+    return hmac.compare_digest(f"sha256={expected_signature}", signature_header)
 
 def notify_letta(username, comment):
     """Send a notification to Letta about a new comment"""
@@ -70,110 +86,6 @@ def notify_letta(username, comment):
         print(f"Error type: {type(e)}")
         return False
 
-def get_instagram_token():
-    """Get Instagram API token"""
-    try:
-        # Get an app access token
-        auth_url = "https://graph.facebook.com/oauth/access_token"
-        params = {
-            "client_id": os.getenv('INSTAGRAM_APP_ID'),
-            "client_secret": os.getenv('APP_SECRET'),
-            "grant_type": "client_credentials"
-        }
-        response = requests.get(auth_url, params=params)
-        if response.status_code == 200:
-            return response.json().get('access_token')
-        return None
-    except Exception as e:
-        print(f"Error getting Instagram token: {e}")
-        return None
-
-def check_for_new_comments():
-    """Check for new comments on Instagram posts"""
-    global LAST_SEEN_COMMENTS
-    
-    while True:
-        try:
-            # Get access token
-            access_token = get_instagram_token()
-            if not access_token:
-                print("Failed to get access token, retrying in 60 seconds...")
-                time.sleep(60)
-                continue
-            
-            # Get the business account's media
-            url = f"https://graph.facebook.com/v19.0/{os.getenv('BUSINESS_ACCOUNT_ID')}/media"
-            params = {
-                "access_token": access_token,
-                "fields": "id,comments{id,text,username,timestamp}"
-            }
-            
-            print("\nFetching media...")
-            response = requests.get(url, params=params)
-            
-            if response.status_code != 200:
-                print(f"Error getting media: {response.text}")
-                time.sleep(60)
-                continue
-                
-            media_list = response.json().get('data', [])
-            print(f"Found {len(media_list)} posts")
-            
-            for media in media_list:
-                try:
-                    media_id = media['id']
-                    print(f"\nChecking media {media_id}")
-                    
-                    # Get comments for this media
-                    comments = media.get('comments', {}).get('data', [])
-                    print(f"Found {len(comments)} comments")
-                    
-                    # Initialize if this is the first time seeing this media
-                    if media_id not in LAST_SEEN_COMMENTS:
-                        print("Initializing comment tracking")
-                        LAST_SEEN_COMMENTS[media_id] = {
-                            comment['id']: {
-                                'timestamp': datetime.fromisoformat(comment['timestamp'].replace('Z', '+00:00')),
-                                'text': comment['text'],
-                                'username': comment['username']
-                            }
-                            for comment in comments
-                        }
-                        continue
-                    
-                    # Check for new comments
-                    for comment in comments:
-                        comment_id = comment['id']
-                        if comment_id not in LAST_SEEN_COMMENTS[media_id]:
-                            comment_timestamp = datetime.fromisoformat(comment['timestamp'].replace('Z', '+00:00'))
-                            
-                            # Only notify about comments made in the last minute
-                            if comment_timestamp > datetime.now(comment_timestamp.tzinfo) - timedelta(minutes=1):
-                                print(f"\nNew comment detected!")
-                                print(f"Text: {comment['text']}")
-                                print(f"By: {comment['username']}")
-                                print(f"At: {comment_timestamp}")
-                                
-                                # Send notification to Letta
-                                notify_letta(comment['username'], comment['text'])
-                            
-                            # Update last seen comments
-                            LAST_SEEN_COMMENTS[media_id][comment_id] = {
-                                'timestamp': comment_timestamp,
-                                'text': comment['text'],
-                                'username': comment['username']
-                            }
-                    
-                except Exception as e:
-                    print(f"Error processing media {media_id}: {e}")
-                    continue
-            
-        except Exception as e:
-            print(f"Error in comment checking loop: {e}")
-        
-        # Wait before next check
-        time.sleep(30)
-
 @app.route('/')
 def index():
     """Main page"""
@@ -182,19 +94,60 @@ def index():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-@app.route('/debug')
-def debug():
-    """Debug endpoint"""
-    return jsonify({
-        'tracked_media': len(LAST_SEEN_COMMENTS),
-        'total_comments': sum(len(comments) for comments in LAST_SEEN_COMMENTS.values())
-    })
+@app.route('/webhook', methods=['GET'])
+def webhook_verify():
+    """Handle the webhook verification from Instagram"""
+    # Verify token should match what you set in the Instagram app
+    VERIFY_TOKEN = os.getenv('WEBHOOK_VERIFY_TOKEN', 'your_verify_token')
+    
+    mode = request.args.get('hub.mode')
+    token = request.args.get('hub.verify_token')
+    challenge = request.args.get('hub.challenge')
+
+    if mode and token:
+        if mode == 'subscribe' and token == VERIFY_TOKEN:
+            print("Webhook verified!")
+            return challenge
+        else:
+            abort(403)
+    
+    abort(400)
+
+@app.route('/webhook', methods=['POST'])
+def webhook_handle():
+    """Handle incoming webhooks from Instagram"""
+    # Verify the request signature
+    signature = request.headers.get('X-Hub-Signature')
+    if not verify_webhook_signature(request.get_data(), signature):
+        abort(403)
+
+    data = request.json
+    
+    try:
+        # Handle the webhook
+        if data.get('object') == 'instagram':
+            for entry in data.get('entry', []):
+                for change in entry.get('changes', []):
+                    if change.get('field') == 'comments':
+                        comment_data = change.get('value', {})
+                        if comment_data:
+                            username = comment_data.get('from', {}).get('username')
+                            text = comment_data.get('text')
+                            
+                            if username and text:
+                                print(f"\nNew comment from webhook!")
+                                print(f"Text: {text}")
+                                print(f"By: {username}")
+                                
+                                # Send notification to Letta
+                                notify_letta(username, text)
+        
+        return 'OK', 200
+    except Exception as e:
+        print(f"Error processing webhook: {e}")
+        return 'Error', 500
 
 if __name__ == '__main__':
-    # Start the comment monitoring thread
-    monitor_thread = threading.Thread(target=check_for_new_comments, daemon=True)
-    monitor_thread.start()
-    print("Started comment monitoring thread")
-    
     # Run the Flask app
-    app.run(host='0.0.0.0', port=52810)
+    port = int(os.getenv('PORT', 54068))  # Using the provided port
+    app.run(host='0.0.0.0', port=port)
