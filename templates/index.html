@@ -116,6 +116,10 @@
         <button class="button" onclick="loadComments('{{ media.id }}')">Show Comments</button>
         
         <div id="comments-{{ media.id }}" class="comments-section hidden">
+            <div class="comment-form">
+                <textarea id="comment-{{ media.id }}" placeholder="Write a comment..."></textarea>
+                <button class="button" onclick="postComment('{{ media.id }}')">Post Comment</button>
+            </div>
             <div id="comments-list-{{ media.id }}"></div>
         </div>
     </div>
@@ -174,6 +178,39 @@
         }
 
         return html;
+    }
+
+    function postComment(mediaId) {
+        const textarea = document.getElementById(`comment-${mediaId}`);
+        const message = textarea.value.trim();
+        
+        if (!message) return;
+
+        fetch(`/media/${mediaId}/comment`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                message: message,
+                username: 'web_user'  // You might want to add a username input field
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                textarea.value = '';
+                // Add the new comment to the UI
+                const commentsList = document.getElementById(`comments-list-${mediaId}`);
+                const commentHtml = createCommentHtml(data.comment);
+                commentsList.insertAdjacentHTML('afterbegin', commentHtml);
+            } else {
+                throw new Error(data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error posting comment: ' + error.message);
+        });
     }
 
     function postReply(commentId) {
