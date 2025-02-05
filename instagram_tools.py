@@ -1,3 +1,6 @@
+# This file contains tools meant to integrate into the server from Letta.
+# It is being kept here as a reference for future integration efforts.
+
 import json
 import requests
 
