@@ -19,32 +19,16 @@ logger = logging.getLogger(__name__)
 # Get Instagram account details using Graph API
 def get_instagram_account_info():
     try:
-        # Get the business account ID from environment
+        # Get the business account ID and access token from environment
         business_id = os.getenv('BUSINESS_ACCOUNT_ID')
-        app_id = os.getenv('INSTAGRAM_APP_ID')
-        app_secret = os.getenv('APP_SECRET')
+        access_token = os.getenv('FACEBOOK_ACCESS_TOKEN')
         
         if not business_id:
             logger.error("BUSINESS_ACCOUNT_ID not set in environment")
             return None
             
-        # Get app access token
-        token_url = f"https://graph.facebook.com/oauth/access_token"
-        token_params = {
-            "client_id": app_id,
-            "client_secret": app_secret,
-            "grant_type": "client_credentials"
-        }
-        token_response = requests.get(token_url, params=token_params)
-        
-        if token_response.status_code != 200:
-            logger.error(f"Failed to get access token. Status: {token_response.status_code}")
-            logger.error(f"Response: {token_response.text}")
-            return None
-            
-        access_token = token_response.json().get('access_token')
         if not access_token:
-            logger.error("No access token in response")
+            logger.error("FACEBOOK_ACCESS_TOKEN not set in environment")
             return None
             
         # Get Instagram Business Account info directly
@@ -76,6 +60,7 @@ def log_config():
         'APP_SECRET',
         'WEBHOOK_VERIFY_TOKEN',
         'BUSINESS_ACCOUNT_ID',
+        'FACEBOOK_ACCESS_TOKEN',
         'PORT'
     ]
     for var in env_vars:
