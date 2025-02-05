@@ -53,6 +53,8 @@ This document outlines the planned improvements and enhancements for the Instagr
   - Review and update Dockerfile to use minimal base image.
   - Implement non-root user for running the application in containers.
   - Optimize docker-compose.yml for production use.
+  - Updated the image name in `docker-compose.yml` to `oculair/instarammidleware:latest`.
+  - Updated the port in `docker-compose.yml` to `54068`.
 
 ## Low Priority (Long-term)
 
