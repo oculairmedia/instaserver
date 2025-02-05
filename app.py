@@ -33,7 +33,14 @@ def get_instagram_account_info():
             "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
         }
         
+        logger.debug(f"Requesting Facebook Pages from: {pages_url}")
+        logger.debug(f"With parameters: {json.dumps(pages_params, indent=2)}")
+        
         pages_response = requests.get(pages_url, params=pages_params)
+        
+        logger.debug(f"Pages API Response Status: {pages_response.status_code}")
+        logger.debug(f"Pages API Response Headers: {dict(pages_response.headers)}")
+        logger.debug(f"Pages API Response Body: {pages_response.text}")
         
         if pages_response.status_code != 200:
             logger.error(f"Failed to get pages. Status: {pages_response.status_code}")
