@@ -6,11 +6,9 @@ services:
     ports:
       - "54068:54068"
     environment:
-      - INSTAGRAM_USERNAME=${INSTAGRAM_USERNAME}
-      - INSTAGRAM_PASSWORD=${INSTAGRAM_PASSWORD}
       - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
       - APP_SECRET=${APP_SECRET}
-      - BUSINESS_ACCOUNT_ID=${BUSINESS_ACCOUNT_ID}
+      - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:54068/debug"]
@@ -18,6 +16,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-volumes:
-  instagram_data:

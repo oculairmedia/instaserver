@@ -19,7 +19,7 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose the port the app runs on
-EXPOSE 51968
+EXPOSE 54068
 
 # Command to run the application
-CMD ["python", "app_private.py"]
+CMD ["python", "app.py"]
