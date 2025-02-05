@@ -16,7 +16,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Log all environment variables at startup
+# Get Instagram account details using Graph API
+def get_instagram_account_info():
+    try:
+        app_id = os.getenv('INSTAGRAM_APP_ID')
+        app_secret = os.getenv('APP_SECRET')
+        
+        # Get app access token
+        token_url = f"https://graph.facebook.com/oauth/access_token"
+        token_params = {
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "grant_type": "client_credentials"
+        }
+        token_response = requests.get(token_url, params=token_params)
+        access_token = token_response.json().get('access_token')
+        
+        if not access_token:
+            logger.error("Failed to get access token")
+            return None
+            
+        # Get Instagram Business Account info
+        account_url = f"https://graph.facebook.com/v19.0/me/accounts"
+        account_params = {
+            "access_token": access_token,
+            "fields": "connected_instagram_account{id,name,username,profile_picture_url}"
+        }
+        
+        response = requests.get(account_url, params=account_params)
+        data = response.json()
+        
+        if 'data' in data and data['data']:
+            for page in data['data']:
+                if 'connected_instagram_account' in page:
+                    return page['connected_instagram_account']
+        
+        return None
+    except Exception as e:
+        logger.error(f"Error getting Instagram account info: {e}")
+        return None
+
+# Log all environment variables and account info at startup
 def log_config():
     logger.info("=== Application Configuration ===")
     env_vars = [
@@ -36,6 +76,17 @@ def log_config():
                 logger.info(f"{var}: {value}")
         else:
             logger.warning(f"{var} not set!")
+    
+    # Get and log Instagram account info
+    logger.info("\n=== Connected Instagram Account ===")
+    account_info = get_instagram_account_info()
+    if account_info:
+        logger.info(f"Account ID: {account_info.get('id')}")
+        logger.info(f"Name: {account_info.get('name')}")
+        logger.info(f"Username: @{account_info.get('username')}")
+        logger.info(f"Profile Picture: {account_info.get('profile_picture_url')}")
+    else:
+        logger.warning("No Instagram account information available")
 
 load_dotenv()
 
