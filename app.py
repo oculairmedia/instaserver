@@ -61,32 +61,29 @@ def verify_webhook_signature(request_data, signature_header):
         logger.error("No APP_SECRET found in environment")
         return False
 
-    # Calculate expected signature
+    # Calculate expected SHA1 signature
     try:
-        expected_signature = hmac.new(
+        expected_sha1 = hmac.new(
             app_secret.encode('utf-8'),
             msg=request_data,
-            digestmod=hashlib.sha256
+            digestmod=hashlib.sha1
         ).hexdigest()
-        logger.debug(f"Expected signature: sha256={expected_signature}")
+        logger.debug(f"Expected SHA1: sha1={expected_sha1}")
+        
+        # Compare SHA1 signatures
+        if signature_header.startswith('sha1='):
+            result = hmac.compare_digest(f"sha1={expected_sha1}", signature_header)
+            logger.info(f"SHA1 signature verification result: {result}")
+            if result:
+                return True
+            else:
+                logger.warning("SHA1 signatures don't match!")
+                logger.warning(f"Expected: sha1={expected_sha1}")
+                logger.warning(f"Received: {signature_header}")
     except Exception as e:
-        logger.error(f"Error calculating signature: {str(e)}")
-        logger.error(f"app_secret type: {type(app_secret)}")
-        logger.error(f"request_data type: {type(request_data)}")
-        return False
+        logger.error(f"Error calculating/comparing SHA1 signature: {str(e)}")
 
-    # Compare signatures
-    try:
-        result = hmac.compare_digest(f"sha256={expected_signature}", signature_header)
-        logger.info(f"Signature verification result: {result}")
-        if not result:
-            logger.warning("Signatures don't match!")
-            logger.warning(f"Expected: sha256={expected_signature}")
-            logger.warning(f"Received: {signature_header}")
-        return result
-    except Exception as e:
-        logger.error(f"Error comparing signatures: {str(e)}")
-        return False
+    return False
 
 def notify_letta(username, comment):
     """Send a notification to Letta about a new comment"""
@@ -185,11 +182,16 @@ def webhook_handle():
     logger.debug(f"Raw data type: {type(raw_data)}")
     logger.debug(f"Raw data length: {len(raw_data)}")
     
-    # Verify the request signature
-    signature = request.headers.get('X-Hub-Signature')
-    logger.info(f"X-Hub-Signature header: {signature}")
+    # Get signatures from headers
+    sha1_sig = request.headers.get('X-Hub-Signature')
+    sha256_sig = request.headers.get('X-Hub-Signature-256')
+    logger.info(f"X-Hub-Signature header: {sha1_sig}")
+    logger.info(f"X-Hub-Signature-256 header: {sha256_sig}")
     
-    if not verify_webhook_signature(raw_data, signature):
+    # Try SHA1 signature first
+    if sha1_sig and verify_webhook_signature(raw_data, sha1_sig):
+        logger.info("SHA1 signature verification successful")
+    else:
         logger.error("Signature verification failed - Unauthorized request")
         abort(403)
 
