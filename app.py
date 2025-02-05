@@ -3,48 +3,18 @@ from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 import requests
 from datetime import datetime
+import threading
+import time
+from instagrapi import Client
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Mock data for testing
-MOCK_MEDIA = [
-    {
-        "id": "test_media_1",
-        "caption": "Test post 1",
-        "comments_count": 2,
-        "timestamp": "2024-02-04T00:00:00+0000",
-        "permalink": "https://instagram.com/p/test1"
-    },
-    {
-        "id": "test_media_2",
-        "caption": "Test post 2",
-        "comments_count": 1,
-        "timestamp": "2024-02-04T00:00:00+0000",
-        "permalink": "https://instagram.com/p/test2"
-    }
-]
-
-MOCK_COMMENTS = {
-    "test_media_1": [
-        {
-            "id": "comment1",
-            "text": "Great post!",
-            "timestamp": "2024-02-04T01:00:00+0000",
-            "username": "user1"
-        }
-    ],
-    "test_media_2": [
-        {
-            "id": "comment3",
-            "text": "Nice!",
-            "timestamp": "2024-02-04T03:00:00+0000",
-            "username": "user3"
-        }
-    ]
-}
+# Store last seen comments to detect new ones
+LAST_SEEN_COMMENTS = {}
 
 def notify_letta(username, comment):
     """Send a notification to Letta about a new comment"""
@@ -70,91 +40,110 @@ def notify_letta(username, comment):
     }
     
     print(f"\n=== Sending Letta Notification ===")
-    print(f"URL: {url}")
-    print(f"Headers: {headers}")
-    print(f"Data: {data}")
+    print(f"Message: New Instagram comment from @{username}: {comment}")
     
     # Send the request
     try:
         response = requests.post(url, json=data, headers=headers, timeout=10)
-        print(f"\nResponse Status: {response.status_code}")
-        print(f"Response Headers: {dict(response.headers)}")
-        print(f"Response Body: {response.text[:500]}")  # Show first 500 chars
-        
+        print(f"Letta response status: {response.status_code}")
         if response.status_code == 200:
             print("Successfully sent notification to Letta")
             return True
         else:
             print(f"Failed to send notification. Status code: {response.status_code}")
             return False
-            
-    except requests.exceptions.Timeout:
-        print("Timeout error when sending notification to Letta")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"Network error when sending notification to Letta: {e}")
-        return False
     except Exception as e:
-        print(f"Unexpected error when sending notification to Letta: {e}")
+        print(f"Error sending Letta notification: {e}")
         return False
 
-def get_media_list():
-    """Get list of media posts"""
-    return MOCK_MEDIA
-
-def get_comments(media_id):
-    """Get comments for a specific media post"""
-    return MOCK_COMMENTS.get(media_id, [])
+def check_for_new_comments():
+    """Check for new comments on Instagram posts"""
+    global LAST_SEEN_COMMENTS
+    
+    # Initialize Instagram client
+    cl = Client()
+    try:
+        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
+        print("Successfully logged in to Instagram")
+    except Exception as e:
+        print(f"Failed to login to Instagram: {e}")
+        return
+    
+    while True:
+        try:
+            # Get user's media
+            user_id = cl.user_id
+            medias = cl.user_medias(user_id, 20)  # Get last 20 posts
+            
+            print(f"\nChecking {len(medias)} posts for new comments...")
+            
+            for media in medias:
+                media_id = str(media.id)
+                comments = cl.media_comments(media.id)
+                current_comments = {
+                    str(comment.pk): {
+                        'id': str(comment.pk),
+                        'text': comment.text,
+                        'username': comment.user.username,
+                        'timestamp': str(comment.created_at_utc)
+                    }
+                    for comment in comments
+                }
+                
+                # Initialize if this is the first time seeing this media
+                if media_id not in LAST_SEEN_COMMENTS:
+                    print(f"Initializing tracking for media {media_id} with {len(current_comments)} comments")
+                    LAST_SEEN_COMMENTS[media_id] = current_comments
+                    continue
+                
+                # Check for new comments
+                for comment_id, comment in current_comments.items():
+                    if comment_id not in LAST_SEEN_COMMENTS[media_id]:
+                        print(f"\nNew comment detected!")
+                        print(f"Media ID: {media_id}")
+                        print(f"Comment: {comment['text']}")
+                        print(f"By: {comment['username']}")
+                        
+                        # Send notification to Letta
+                        notify_letta(comment['username'], comment['text'])
+                        
+                        # Update last seen comments
+                        LAST_SEEN_COMMENTS[media_id][comment_id] = comment
+            
+        except Exception as e:
+            print(f"Error in comment checking loop: {e}")
+            # Try to login again in case session expired
+            try:
+                cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
+                print("Re-logged in to Instagram")
+            except:
+                pass
+        
+        # Wait before next check
+        time.sleep(30)  # Check every 30 seconds
 
 @app.route('/')
 def index():
     """Main page"""
     try:
-        media_list = get_media_list()
-        return render_template('index.html', media_list=media_list)
+        return render_template('index.html')
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-@app.route('/media/<media_id>/comments')
-def media_comments(media_id):
-    """Get comments for a media post"""
-    comments = get_comments(media_id)
-    return jsonify(comments)
-
-@app.route('/media/<media_id>/comment', methods=['POST'])
-def post_comment(media_id):
-    """Post a new comment and notify Letta"""
-    data = request.get_json()
-    if not data or 'message' not in data:
-        return jsonify({"error": "Message is required"}), 400
-    
-    message = data['message']
-    username = data.get('username', 'anonymous')
-    
-    try:
-        # Send notification to Letta
-        notify_letta(username, message)
-        
-        # Create new comment
-        new_comment = {
-            "id": f"comment_{datetime.now().timestamp()}",
-            "text": message,
-            "username": username,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # Add to mock data
-        if media_id not in MOCK_COMMENTS:
-            MOCK_COMMENTS[media_id] = []
-        MOCK_COMMENTS[media_id].append(new_comment)
-        
-        return jsonify({
-            "success": True,
-            "comment": new_comment
-        })
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/debug')
+def debug():
+    """Debug endpoint"""
+    return jsonify({
+        'username': os.getenv('INSTAGRAM_USERNAME'),
+        'tracked_media': len(LAST_SEEN_COMMENTS),
+        'total_comments': sum(len(comments) for comments in LAST_SEEN_COMMENTS.values())
+    })
 
 if __name__ == '__main__':
+    # Start the comment monitoring thread
+    monitor_thread = threading.Thread(target=check_for_new_comments, daemon=True)
+    monitor_thread.start()
+    print("Started comment monitoring thread")
+    
+    # Run the Flask app
     app.run(host='0.0.0.0', port=52810)
