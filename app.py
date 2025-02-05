@@ -180,11 +180,12 @@ def notify_letta(username, comment):
     logger.debug(f"Notification URL: {url}")
     
     # Prepare the message data
+    message = f"New Instagram comment from @{username}: {comment}"
     data = {
         "messages": [
             {
                 "role": "user",
-                "content": f"New Instagram comment from @{username}: {comment}"
+                "content": message
             }
         ],
         "stream_steps": True,
@@ -199,19 +200,38 @@ def notify_letta(username, comment):
     }
     
     logger.info(f"Sending notification for comment from @{username}")
+    logger.info(f"Message content: {message}")
     logger.debug(f"Request headers: {json.dumps(headers, indent=2)}")
     logger.debug(f"Request data: {json.dumps(data, indent=2)}")
     
     # Send the request
     try:
         logger.info("Sending request to Letta...")
+        start_time = datetime.now()
+        
         response = requests.post(url, json=data, headers=headers, timeout=10)
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Request took {duration:.2f} seconds")
+        
         logger.debug(f"Response status: {response.status_code}")
         logger.debug(f"Response headers: {dict(response.headers)}")
-        logger.debug(f"Response body (first 500 chars): {response.text[:500]}")
+        
+        # Log full response for debugging
+        logger.debug("Full response body:")
+        logger.debug(response.text)
         
         if response.status_code == 200:
             logger.info("Successfully sent notification to Letta")
+            # Try to parse the response to verify Letta received it
+            try:
+                events = response.text.strip().split('\n\n')
+                for event in events:
+                    if event.startswith('data: '):
+                        event_data = json.loads(event[6:])  # Skip 'data: ' prefix
+                        logger.info(f"Letta event: {json.dumps(event_data, indent=2)}")
+            except Exception as e:
+                logger.warning(f"Could not parse Letta response events: {e}")
             return True
         else:
             logger.error(f"Failed to send notification. Status code: {response.status_code}")
@@ -222,10 +242,12 @@ def notify_letta(username, comment):
         return False
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error when sending notification to Letta: {e}")
+        logger.error(f"Full error: {str(e)}")
         return False
     except Exception as e:
         logger.error(f"Unexpected error when sending notification to Letta: {e}")
         logger.error(f"Error type: {type(e)}")
+        logger.error(f"Full error: {str(e)}")
         return False
 
 @app.route('/')
