@@ -13,12 +13,17 @@ app.secret_key = os.urandom(24)
 
 def verify_webhook_signature(request_data, signature_header):
     """Verify that the webhook request came from Instagram"""
+    print("\n=== Webhook Signature Verification ===")
+    print(f"Received signature header: {signature_header}")
+    
     if not signature_header:
+        print("No signature header received")
         return False
 
     # Get the app secret from environment
     app_secret = os.getenv('APP_SECRET')
     if not app_secret:
+        print("No APP_SECRET found in environment")
         return False
 
     # Calculate expected signature
@@ -28,8 +33,12 @@ def verify_webhook_signature(request_data, signature_header):
         digestmod=hashlib.sha256
     ).hexdigest()
 
+    print(f"Expected signature: sha256={expected_signature}")
+    
     # Compare signatures
-    return hmac.compare_digest(f"sha256={expected_signature}", signature_header)
+    result = hmac.compare_digest(f"sha256={expected_signature}", signature_header)
+    print(f"Signature verification result: {result}")
+    return result
 
 def notify_letta(username, comment):
     """Send a notification to Letta about a new comment"""
@@ -116,12 +125,18 @@ def webhook_verify():
 @app.route('/webhook', methods=['POST'])
 def webhook_handle():
     """Handle incoming webhooks from Instagram"""
+    print("\n=== Received Webhook Request ===")
+    print(f"Headers: {dict(request.headers)}")
+    print(f"Raw data: {request.get_data()}")
+    
     # Verify the request signature
     signature = request.headers.get('X-Hub-Signature')
     if not verify_webhook_signature(request.get_data(), signature):
+        print("Signature verification failed")
         abort(403)
 
     data = request.json
+    print(f"JSON data: {json.dumps(data, indent=2)}")
     
     try:
         # Handle the webhook
