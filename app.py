@@ -92,7 +92,12 @@ def check_for_new_comments():
                 
                 # Initialize if this is the first time seeing this media
                 if media_id not in LAST_SEEN_COMMENTS:
-                    print(f"Initializing tracking for media {media_id} with {len(current_comments)} comments")
+                    print(f"\nInitializing tracking for media {media_id}")
+                    print(f"Found {len(current_comments)} comments:")
+                    for comment in comments:
+                        print(f"- Comment ID: {comment.pk}")
+                        print(f"  Text: {comment.text}")
+                        print(f"  By: {comment.user.username}")
                     LAST_SEEN_COMMENTS[media_id] = current_comments
                     continue
                 
@@ -138,6 +143,94 @@ def debug():
         'tracked_media': len(LAST_SEEN_COMMENTS),
         'total_comments': sum(len(comments) for comments in LAST_SEEN_COMMENTS.values())
     })
+
+@app.route('/test/comment', methods=['POST'])
+def test_comment():
+    """Test endpoint to post a comment"""
+    try:
+        data = request.get_json()
+        if not data or 'media_id' not in data or 'text' not in data:
+            return jsonify({
+                "error": "Required fields: media_id, text"
+            }), 400
+
+        media_id = data['media_id']
+        text = data['text']
+
+        # Initialize Instagram client
+        cl = Client()
+        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
+        print(f"Logged in to Instagram as {os.getenv('INSTAGRAM_USERNAME')}")
+
+        # Post the comment
+        print(f"Posting comment on media {media_id}")
+        print(f"Comment text: {text}")
+        
+        result = cl.media_comment(
+            media_id=media_id,
+            text=text
+        )
+        
+        print("Comment posted successfully:", result)
+        
+        return jsonify({
+            "success": True,
+            "comment": {
+                "id": str(result.pk),
+                "text": result.text,
+                "username": result.user.username,
+                "timestamp": str(result.created_at_utc)
+            }
+        })
+
+    except Exception as e:
+        print(f"Error posting comment: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/test/reply', methods=['POST'])
+def test_reply():
+    """Test endpoint to reply to a comment"""
+    try:
+        data = request.get_json()
+        if not data or 'media_id' not in data or 'comment_id' not in data or 'reply_text' not in data:
+            return jsonify({
+                "error": "Required fields: media_id, comment_id, reply_text"
+            }), 400
+
+        media_id = data['media_id']
+        comment_id = data['comment_id']
+        reply_text = data['reply_text']
+
+        # Initialize Instagram client
+        cl = Client()
+        cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
+        print(f"Logged in to Instagram as {os.getenv('INSTAGRAM_USERNAME')}")
+
+        # Reply to the comment
+        print(f"Replying to comment {comment_id} on media {media_id}")
+        print(f"Reply text: {reply_text}")
+        
+        result = cl.media_comment(
+            media_id=media_id,
+            text=reply_text,
+            replied_to_comment_id=comment_id
+        )
+        
+        print("Reply posted successfully:", result)
+        
+        return jsonify({
+            "success": True,
+            "reply": {
+                "id": str(result.pk),
+                "text": result.text,
+                "username": result.user.username,
+                "timestamp": str(result.created_at_utc)
+            }
+        })
+
+    except Exception as e:
+        print(f"Error replying to comment: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Start the comment monitoring thread
