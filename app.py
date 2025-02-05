@@ -70,7 +70,6 @@ def log_config():
         'INSTAGRAM_APP_ID',
         'APP_SECRET',
         'WEBHOOK_VERIFY_TOKEN',
-        'BUSINESS_ACCOUNT_ID',
         'FACEBOOK_ACCESS_TOKEN',
         'PORT'
     ]
