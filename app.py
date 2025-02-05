@@ -88,10 +88,45 @@ def check_for_new_comments():
         
         try:
             if not cl.user_id:
-                cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD'))
-                print("Successfully logged in to Instagram")
-                login_attempts = 0
+                # Set up session settings
+                cl.set_settings({
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "device_settings": {
+                        "app_version": "269.0.0.18.75",
+                        "android_version": 26,
+                        "android_release": "8.0.0",
+                        "dpi": "480dpi",
+                        "resolution": "1080x1920",
+                        "manufacturer": "OnePlus",
+                        "device": "OnePlus5",
+                        "model": "ONEPLUS A5000",
+                        "cpu": "qcom"
+                    }
+                })
+                
+                # Try to load session from file
+                session_file = "instagram_session.json"
+                if os.path.exists(session_file):
+                    try:
+                        cl.load_settings(session_file)
+                        print("Loaded existing session")
+                        if cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD')):
+                            print("Successfully restored session")
+                            cl.dump_settings(session_file)
+                            return True
+                    except Exception as e:
+                        print(f"Error loading session: {e}")
+                
+                # If no session or session failed, try fresh login
+                print("Attempting fresh login...")
+                if cl.login(os.getenv('INSTAGRAM_USERNAME'), os.getenv('INSTAGRAM_PASSWORD')):
+                    print("Successfully logged in to Instagram")
+                    cl.dump_settings(session_file)
+                    login_attempts = 0
+                    return True
+                
             return True
+            
         except Exception as e:
             print(f"Login attempt failed: {e}")
             login_attempts += 1
@@ -108,8 +143,16 @@ def check_for_new_comments():
                 continue
                 
             # Get user's media
-            user_id = cl.user_id
-            medias = cl.user_medias(user_id, 20)  # Get last 20 posts
+            try:
+                user_id = cl.user_id
+                medias = cl.user_medias(user_id, 20)  # Get last 20 posts
+            except Exception as e:
+                if "challenge_required" in str(e):
+                    print("Instagram security challenge required. Trying to refresh session...")
+                    cl = None  # Force new login next time
+                    time.sleep(60)  # Wait a minute before retry
+                    continue
+                raise e
             
             print(f"\nChecking {len(medias)} posts for new comments...")
             
