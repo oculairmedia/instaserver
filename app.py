@@ -1,48 +1,98 @@
 import os
 import hmac
 import hashlib
+import logging
 from flask import Flask, render_template, request, jsonify, abort
 from dotenv import load_dotenv
 import requests
 import json
+from datetime import datetime
+
+# Set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# Log all environment variables at startup
+def log_config():
+    logger.info("=== Application Configuration ===")
+    env_vars = [
+        'INSTAGRAM_APP_ID',
+        'APP_SECRET',
+        'WEBHOOK_VERIFY_TOKEN',
+        'PORT'
+    ]
+    for var in env_vars:
+        value = os.getenv(var)
+        if value:
+            # Mask sensitive values
+            if var in ['APP_SECRET', 'WEBHOOK_VERIFY_TOKEN']:
+                masked = value[:4] + '*' * (len(value) - 4)
+                logger.info(f"{var}: {masked}")
+            else:
+                logger.info(f"{var}: {value}")
+        else:
+            logger.warning(f"{var} not set!")
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
+# Log startup configuration
+log_config()
+
 def verify_webhook_signature(request_data, signature_header):
     """Verify that the webhook request came from Instagram"""
-    print("\n=== Webhook Signature Verification ===")
-    print(f"Received signature header: {signature_header}")
+    logger.info("=== Webhook Signature Verification ===")
+    logger.debug(f"Received signature header: {signature_header}")
+    logger.debug(f"Raw request data: {request_data}")
     
     if not signature_header:
-        print("No signature header received")
+        logger.error("No signature header received")
         return False
 
     # Get the app secret from environment
     app_secret = os.getenv('APP_SECRET')
     if not app_secret:
-        print("No APP_SECRET found in environment")
+        logger.error("No APP_SECRET found in environment")
         return False
 
     # Calculate expected signature
-    expected_signature = hmac.new(
-        app_secret.encode('utf-8'),
-        msg=request_data,
-        digestmod=hashlib.sha256
-    ).hexdigest()
+    try:
+        expected_signature = hmac.new(
+            app_secret.encode('utf-8'),
+            msg=request_data,
+            digestmod=hashlib.sha256
+        ).hexdigest()
+        logger.debug(f"Expected signature: sha256={expected_signature}")
+    except Exception as e:
+        logger.error(f"Error calculating signature: {str(e)}")
+        logger.error(f"app_secret type: {type(app_secret)}")
+        logger.error(f"request_data type: {type(request_data)}")
+        return False
 
-    print(f"Expected signature: sha256={expected_signature}")
-    
     # Compare signatures
-    result = hmac.compare_digest(f"sha256={expected_signature}", signature_header)
-    print(f"Signature verification result: {result}")
-    return result
+    try:
+        result = hmac.compare_digest(f"sha256={expected_signature}", signature_header)
+        logger.info(f"Signature verification result: {result}")
+        if not result:
+            logger.warning("Signatures don't match!")
+            logger.warning(f"Expected: sha256={expected_signature}")
+            logger.warning(f"Received: {signature_header}")
+        return result
+    except Exception as e:
+        logger.error(f"Error comparing signatures: {str(e)}")
+        return False
 
 def notify_letta(username, comment):
     """Send a notification to Letta about a new comment"""
+    logger.info("=== Sending Letta Notification ===")
     url = "https://letta2.oculair.ca/v1/agents/agent-070e23da-b3db-4f5c-aeb1-f115febf684e/messages/stream"
+    logger.debug(f"Notification URL: {url}")
     
     # Prepare the message data
     data = {
@@ -63,36 +113,34 @@ def notify_letta(username, comment):
         "Accept": "text/event-stream"
     }
     
-    print(f"\n=== Sending Letta Notification ===")
-    print(f"URL: {url}")
-    print(f"Headers: {json.dumps(headers, indent=2)}")
-    print(f"Data: {json.dumps(data, indent=2)}")
-    print(f"Message: New Instagram comment from @{username}: {comment}")
+    logger.info(f"Sending notification for comment from @{username}")
+    logger.debug(f"Request headers: {json.dumps(headers, indent=2)}")
+    logger.debug(f"Request data: {json.dumps(data, indent=2)}")
     
     # Send the request
     try:
-        print("\nSending request to Letta...")
+        logger.info("Sending request to Letta...")
         response = requests.post(url, json=data, headers=headers, timeout=10)
-        print(f"Response status: {response.status_code}")
-        print(f"Response headers: {dict(response.headers)}")
-        print(f"Response body: {response.text[:500]}")  # First 500 chars
+        logger.debug(f"Response status: {response.status_code}")
+        logger.debug(f"Response headers: {dict(response.headers)}")
+        logger.debug(f"Response body (first 500 chars): {response.text[:500]}")
         
         if response.status_code == 200:
-            print("Successfully sent notification to Letta")
+            logger.info("Successfully sent notification to Letta")
             return True
         else:
-            print(f"Failed to send notification. Status code: {response.status_code}")
-            print(f"Error response: {response.text}")
+            logger.error(f"Failed to send notification. Status code: {response.status_code}")
+            logger.error(f"Error response: {response.text}")
             return False
     except requests.exceptions.Timeout:
-        print("Timeout error when sending notification to Letta")
+        logger.error("Timeout error when sending notification to Letta")
         return False
     except requests.exceptions.RequestException as e:
-        print(f"Network error when sending notification to Letta: {e}")
+        logger.error(f"Network error when sending notification to Letta: {e}")
         return False
     except Exception as e:
-        print(f"Unexpected error when sending notification to Letta: {e}")
-        print(f"Error type: {type(e)}")
+        logger.error(f"Unexpected error when sending notification to Letta: {e}")
+        logger.error(f"Error type: {type(e)}")
         return False
 
 @app.route('/')
@@ -125,24 +173,42 @@ def webhook_verify():
 @app.route('/webhook', methods=['POST'])
 def webhook_handle():
     """Handle incoming webhooks from Instagram"""
-    print("\n=== Received Webhook Request ===")
-    print(f"Headers: {dict(request.headers)}")
-    print(f"Raw data: {request.get_data()}")
+    logger.info("=== Received Webhook Request ===")
+    logger.info(f"Remote IP: {request.remote_addr}")
+    logger.info(f"Request Method: {request.method}")
+    logger.info(f"Request Path: {request.path}")
+    logger.debug(f"Request Headers: {dict(request.headers)}")
+    
+    # Get and log raw data
+    raw_data = request.get_data()
+    logger.debug(f"Raw request data: {raw_data}")
+    logger.debug(f"Raw data type: {type(raw_data)}")
+    logger.debug(f"Raw data length: {len(raw_data)}")
     
     # Verify the request signature
     signature = request.headers.get('X-Hub-Signature')
-    if not verify_webhook_signature(request.get_data(), signature):
-        print("Signature verification failed")
+    logger.info(f"X-Hub-Signature header: {signature}")
+    
+    if not verify_webhook_signature(raw_data, signature):
+        logger.error("Signature verification failed - Unauthorized request")
         abort(403)
 
-    data = request.json
-    print(f"JSON data: {json.dumps(data, indent=2)}")
+    # Parse and log JSON data
+    try:
+        data = request.json
+        logger.debug(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+    except Exception as e:
+        logger.error(f"Failed to parse JSON data: {str(e)}")
+        return 'Invalid JSON', 400
     
     try:
         # Handle the webhook
         if data.get('object') == 'instagram':
+            logger.info("Processing Instagram webhook")
             for entry in data.get('entry', []):
+                logger.debug(f"Processing entry: {json.dumps(entry, indent=2)}")
                 for change in entry.get('changes', []):
+                    logger.debug(f"Processing change: {json.dumps(change, indent=2)}")
                     if change.get('field') == 'comments':
                         comment_data = change.get('value', {})
                         if comment_data:
@@ -150,16 +216,20 @@ def webhook_handle():
                             text = comment_data.get('text')
                             
                             if username and text:
-                                print(f"\nNew comment from webhook!")
-                                print(f"Text: {text}")
-                                print(f"By: {username}")
+                                logger.info(f"New comment detected from @{username}")
+                                logger.info(f"Comment text: {text}")
                                 
                                 # Send notification to Letta
                                 notify_letta(username, text)
+                            else:
+                                logger.warning("Comment data missing username or text")
+                                logger.debug(f"Comment data: {json.dumps(comment_data, indent=2)}")
+        else:
+            logger.warning(f"Unexpected webhook object type: {data.get('object')}")
         
         return 'OK', 200
     except Exception as e:
-        print(f"Error processing webhook: {e}")
+        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
         return 'Error', 500
 
 if __name__ == '__main__':
