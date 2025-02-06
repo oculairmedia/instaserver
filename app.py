@@ -580,5 +580,5 @@ def webhook_handle_internal(data, signature_valid=True, is_test=False):
 
 if __name__ == '__main__':
     # Run the Flask app
-    port = int(os.getenv('PORT', 54068))  # Using the provided port
+    port = int(os.getenv('PORT', 54088))  # Using the provided port
     app.run(host='0.0.0.0', port=port, debug=True)  # Enable debug mode for better error messages
