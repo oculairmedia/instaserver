@@ -47,7 +47,7 @@ def get_instagram_account_info():
             
         # First, get the Facebook Pages
         logger.info("Getting Facebook Pages...")
-        pages_url = "https://graph.facebook.com/v19.0/me/accounts"
+        pages_url = "https://graph.facebook.com/v21.0/me/accounts"
         pages_params = {
             "access_token": access_token,
             "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
@@ -166,51 +166,21 @@ def init_once():
 def enable_webhook_subscriptions():
     """Enable webhook subscriptions for the Instagram account"""
     try:
-        global instagram_account
+        global instagram_account, page_access_token, page_id
         
-        app_id = os.getenv('INSTAGRAM_APP_ID')
-        app_secret = os.getenv('APP_SECRET')
-        
-        if not app_id or not app_secret or not instagram_account:
+        if not page_access_token or not page_id or not instagram_account:
             logger.error("Missing required credentials")
             return False
-            
-        # Generate app access token
-        app_access_token = f"{app_id}|{app_secret}"
-            
-        # First, subscribe the app to Instagram webhooks
-        app_url = "https://graph.facebook.com/v19.0/app/subscriptions"
-        app_params = {
-            "access_token": app_access_token,
-            "object": "instagram",
-            "callback_url": "https://instagram.oculair.ca/webhook",
-            "fields": "mention",
-            "verify_token": os.getenv('WEBHOOK_VERIFY_TOKEN')
-        }
         
-        logger.info("Subscribing app to Instagram webhooks...")
-        logger.debug(f"Using URL: {app_url}")
-        logger.debug(f"Using params: {json.dumps(app_params, indent=2)}")
-        
-        app_response = requests.post(app_url, params=app_params)
-        
-        if app_response.status_code != 200:
-            logger.error(f"Failed to subscribe app to webhooks: {app_response.text}")
-            return False
-            
-        logger.info("Successfully subscribed app to webhooks")
-            
-        # Then subscribe to Instagram comments and mentions using the page access token
-        insta_url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
+        insta_url = f"https://graph.facebook.com/v21.0/{page_id}/subscribed_apps"
         insta_params = {
-            "access_token": page_access_token,  # Use page access token for Instagram subscription
-            "subscribed_fields": "mention",
-            "object": "instagram"
+            "access_token": page_access_token,
+            "subscribed_fields": "mentions",
         }
         
         logger.info("Subscribing to Instagram webhooks...")
         logger.debug(f"Using URL: {insta_url}")
-        logger.debug(f"Using fields: {insta_params['subscribed_fields']}")
+        logger.debug(f"Using params: {json.dumps(insta_params, indent=2)}")
         
         response = requests.post(insta_url, params=insta_params)
         
@@ -220,7 +190,7 @@ def enable_webhook_subscriptions():
         else:
             logger.error(f"Failed to subscribe to webhooks: {response.text}")
             return False
-            
+    
     except Exception as e:
         logger.error(f"Error enabling subscriptions: {e}")
         logger.error(f"Error type: {type(e)}")
@@ -401,17 +371,12 @@ def test_webhook():
                 "id": "0",
                 "time": int(datetime.now().timestamp()),
                 "changes": [{
-                    "field": "comments",
+                    "field": "mention",
                     "value": {
-                        "from": {
-                            "id": "test_user_id",
-                            "username": "test_user"
-                        },
-                        "text": "This is a test comment",
-                        "id": f"test_{int(datetime.now().timestamp())}",
-                        "media": {
-                            "id": instagram_account['id'] if instagram_account else "test_media_id"
-                        }
+                        "username": "test_user",
+                        "comment_text": "This is a test mention",
+                        "comment_id": f"test_{int(datetime.now().timestamp())}",
+                        "media_id": instagram_account['id'] if instagram_account else "test_media_id"
                     }
                 }]
             }],
@@ -566,8 +531,8 @@ def webhook_handle_internal(data, signature_valid=True, is_test=False):
                                 if notify_letta(username, text):
                                     # Only mark as processed if notification was successful
                                     if not is_test:
-                                        add_processed_comment(comment_id)
-                                        logger.info(f"Marked comment {comment_id} as processed")
+                                        add_processed_comment(mention_id)
+                                        logger.info(f"Marked mention {mention_id} as processed")
                             else:
                                 logger.warning("Comment data missing username or text")
                                 logger.debug(f"Comment data: {json.dumps(comment_data, indent=2)}")

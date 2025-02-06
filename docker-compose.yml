@@ -1,6 +1,7 @@
 version: "3.8"
 services:
   instagram-comments:
+    build: .
     image: oculair/instarammidleware:latest
     ports:
       - 54088:54068
