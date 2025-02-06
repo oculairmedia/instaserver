@@ -183,7 +183,7 @@ def enable_webhook_subscriptions():
         app_params = {
             "access_token": app_access_token,
             "object": "instagram",
-            "callback_url": "https://instaserver.oculair.ca/webhook",
+            "callback_url": f"http://localhost:50409/webhook",
             "fields": "comments,mentions",
             "verify_token": os.getenv('WEBHOOK_VERIFY_TOKEN')
         }
