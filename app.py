@@ -284,36 +284,48 @@ def index():
 @app.route('/webhook', methods=['GET'])
 def webhook_verify():
     """Handle the webhook verification from Instagram"""
+    logger.info("=== Webhook Verification Request ===")
+    logger.info(f"Remote IP: {request.remote_addr}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Args: {dict(request.args)}")
+    
     # Verify token should match what you set in the Instagram app
     VERIFY_TOKEN = os.getenv('WEBHOOK_VERIFY_TOKEN', 'your_verify_token')
+    logger.info(f"Our verify token: {VERIFY_TOKEN}")
     
     mode = request.args.get('hub.mode')
     token = request.args.get('hub.verify_token')
     challenge = request.args.get('hub.challenge')
 
+    logger.info(f"Mode: {mode}")
+    logger.info(f"Token: {token}")
+    logger.info(f"Challenge: {challenge}")
+
     if mode and token:
         if mode == 'subscribe' and token == VERIFY_TOKEN:
-            print("Webhook verified!")
+            logger.info("Webhook verified successfully!")
             return challenge
         else:
+            logger.error(f"Verification failed. Mode: {mode}, Token match: {token == VERIFY_TOKEN}")
             abort(403)
     
+    logger.error("Missing mode or token")
     abort(400)
 
 @app.route('/webhook', methods=['POST'])
 def webhook_handle():
     """Handle incoming webhooks from Instagram"""
-    logger.info("=== Received Webhook Request ===")
+    logger.info("\n=== Received Webhook Request ===")
     logger.info(f"Remote IP: {request.remote_addr}")
     logger.info(f"Request Method: {request.method}")
     logger.info(f"Request Path: {request.path}")
-    logger.debug(f"Request Headers: {dict(request.headers)}")
+    logger.info(f"Request Headers: {dict(request.headers)}")
     
     # Get and log raw data
     raw_data = request.get_data()
-    logger.debug(f"Raw request data: {raw_data}")
-    logger.debug(f"Raw data type: {type(raw_data)}")
-    logger.debug(f"Raw data length: {len(raw_data)}")
+    logger.info(f"Raw request data: {raw_data}")
+    logger.info(f"Raw data type: {type(raw_data)}")
+    logger.info(f"Raw data length: {len(raw_data)}")
     
     # Get signatures from headers
     sha1_sig = request.headers.get('X-Hub-Signature')
@@ -325,7 +337,9 @@ def webhook_handle():
     if sha1_sig and verify_webhook_signature(raw_data, sha1_sig):
         logger.info("SHA1 signature verification successful")
     else:
-        logger.error("Signature verification failed - Unauthorized request")
+        logger.error("Signature verification failed")
+        logger.error(f"APP_SECRET length: {len(os.getenv('APP_SECRET', ''))}")
+        logger.error(f"Expected signature format: sha1=HASH")
         abort(403)
 
     # Parse and log JSON data
