@@ -166,31 +166,48 @@ def init_once():
 def enable_webhook_subscriptions():
     """Enable webhook subscriptions for the Instagram account"""
     try:
-        global page_access_token, page_id
+        global page_access_token, page_id, instagram_account
         
         if not page_access_token or not page_id:
             logger.error("No page access token or page ID available")
             return False
             
-        url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
-        params = {
-            "subscribed_fields": "comments",
-            "access_token": page_access_token
+        # First, subscribe the app to the page
+        page_url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
+        page_params = {
+            "access_token": page_access_token,
+            "subscribed_fields": "leadgen,messaging_postbacks,messaging_optins,feed,messages,message_deliveries,message_reads,message_echoes,messaging_game_plays,messaging_payments,messaging_pre_checkouts,messaging_checkout_updates,messaging_account_linking,messaging_referrals,messaging_handovers,messaging_policy_enforcement,message_reactions,inbox_labels,standby,message_reactions,group_feed,mentions,name,picture,posts"
         }
         
-        logger.info("Enabling webhook subscriptions...")
-        logger.debug(f"Using URL: {url}")
-        response = requests.post(url, params=params)
+        logger.info("Subscribing app to Facebook Page...")
+        logger.debug(f"Using URL: {page_url}")
+        page_response = requests.post(page_url, params=page_params)
         
-        if response.status_code == 200:
-            logger.info("Successfully enabled webhook subscriptions")
-            return True
-        else:
-            logger.error(f"Failed to enable subscriptions: {response.text}")
+        if page_response.status_code != 200:
+            logger.error(f"Failed to subscribe to page: {page_response.text}")
             return False
+            
+        # Then, subscribe to Instagram comments
+        insta_url = f"https://graph.facebook.com/v19.0/{instagram_account['id']}/subscribed_apps"
+        insta_params = {
+            "access_token": page_access_token,
+            "subscribed_fields": "comments,mentions"
+        }
+        
+        logger.info("Subscribing to Instagram comments...")
+        logger.debug(f"Using URL: {insta_url}")
+        insta_response = requests.post(insta_url, params=insta_params)
+        
+        if insta_response.status_code != 200:
+            logger.error(f"Failed to subscribe to Instagram: {insta_response.text}")
+            return False
+            
+        logger.info("Successfully enabled all webhook subscriptions")
+        return True
             
     except Exception as e:
         logger.error(f"Error enabling subscriptions: {e}")
+        logger.error(f"Error type: {type(e)}")
         return False
 
 # Initialize on module load (will only happen once)
