@@ -200,10 +200,10 @@ def enable_webhook_subscriptions():
             
         logger.info("Successfully subscribed app to webhooks")
             
-        # Then subscribe to Instagram comments and mentions
+        # Then subscribe to Instagram comments and mentions using the page access token
         insta_url = f"https://graph.facebook.com/v19.0/{instagram_account['id']}/subscribed_apps"
         insta_params = {
-            "access_token": app_access_token,
+            "access_token": page_access_token,  # Use page access token for Instagram subscription
             "subscribed_fields": "comments,mentions"
         }
         
