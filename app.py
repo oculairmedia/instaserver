@@ -178,7 +178,29 @@ def enable_webhook_subscriptions():
         # Generate app access token
         app_access_token = f"{app_id}|{app_secret}"
             
-        # Subscribe to Instagram comments and mentions
+        # First, subscribe the app to Instagram webhooks
+        app_url = "https://graph.facebook.com/v19.0/app/subscriptions"
+        app_params = {
+            "access_token": app_access_token,
+            "object": "instagram",
+            "callback_url": "https://instaserver.oculair.ca/webhook",
+            "fields": "comments,mentions",
+            "verify_token": os.getenv('WEBHOOK_VERIFY_TOKEN')
+        }
+        
+        logger.info("Subscribing app to Instagram webhooks...")
+        logger.debug(f"Using URL: {app_url}")
+        logger.debug(f"Using params: {json.dumps(app_params, indent=2)}")
+        
+        app_response = requests.post(app_url, params=app_params)
+        
+        if app_response.status_code != 200:
+            logger.error(f"Failed to subscribe app to webhooks: {app_response.text}")
+            return False
+            
+        logger.info("Successfully subscribed app to webhooks")
+            
+        # Then subscribe to Instagram comments and mentions
         insta_url = f"https://graph.facebook.com/v19.0/{instagram_account['id']}/subscribed_apps"
         insta_params = {
             "access_token": app_access_token,
