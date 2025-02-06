@@ -26,13 +26,15 @@ def is_comment_processed(comment_id):
     """Check if a comment ID has been processed recently"""
     return comment_id in PROCESSED_COMMENTS
 
-# Set up logging
+# Set up logging with version info
+VERSION = "1.0.0"
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+logger.info(f"Starting Instagram Webhook Server v{VERSION}")
 
 # Get Instagram account details using Graph API
 def get_instagram_account_info():
