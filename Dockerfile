@@ -21,5 +21,5 @@ USER appuser
 # Expose the port the app runs on
 EXPOSE 54068
 
-# Command to run the application
-CMD ["python", "app.py"]
+# Command to run the application with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:54068", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:app"]
