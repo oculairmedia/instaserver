@@ -276,8 +276,9 @@ def notify_letta(username, comment):
 def index():
     """Main page"""
     try:
-        return render_template('index.html')
+        return render_template('index.html', instagram_account=instagram_account or {})
     except Exception as e:
+        logger.error(f"Error rendering index: {str(e)}", exc_info=True)
         return f"Error: {str(e)}", 500
 
 @app.route('/webhook', methods=['GET'])

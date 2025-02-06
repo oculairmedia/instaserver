@@ -12,6 +12,32 @@
             padding: 20px;
             background-color: #fafafa;
         }
+        .status-box, .info-box {
+            background-color: white;
+            border: 1px solid #dbdbdb;
+            border-radius: 3px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .status-box h2, .info-box h2 {
+            margin-top: 0;
+            color: #262626;
+            border-bottom: 1px solid #dbdbdb;
+            padding-bottom: 10px;
+        }
+        .status-box p {
+            margin: 10px 0;
+            line-height: 1.4;
+        }
+        .info-box ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .info-box li {
+            margin: 8px 0;
+            line-height: 1.4;
+        }
         .media-item {
             border: 1px solid #dbdbdb;
             margin-bottom: 20px;
@@ -99,6 +125,26 @@
 <body>
     <h1>Instagram Comments Manager</h1>
     
+    <div class="status-box">
+        <h2>Connection Status</h2>
+        <p><strong>Connected Account:</strong> @{{ instagram_account.username }}</p>
+        <p><strong>Account Name:</strong> {{ instagram_account.name }}</p>
+        <p><strong>Account ID:</strong> {{ instagram_account.id }}</p>
+        <p><strong>Webhook Status:</strong> Active and listening for comments</p>
+        <p><strong>Letta Integration:</strong> Connected and ready</p>
+    </div>
+
+    <div class="info-box">
+        <h2>How it Works</h2>
+        <ol>
+            <li>When someone comments on any @{{ instagram_account.username }} post</li>
+            <li>Instagram sends a webhook notification to this server</li>
+            <li>The server verifies the webhook signature</li>
+            <li>If valid, sends the comment to Letta</li>
+            <li>Letta processes the comment and responds</li>
+        </ol>
+    </div>
+
     {% for media in media_list %}
     <div class="media-item">
         <div class="media-header">
