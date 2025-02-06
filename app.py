@@ -152,8 +152,38 @@ def init_once():
         else:
             logger.warning("No Instagram account information available")
 
+# Enable webhook subscriptions
+def enable_webhook_subscriptions():
+    """Enable webhook subscriptions for the Instagram account"""
+    try:
+        access_token = os.getenv('FACEBOOK_ACCESS_TOKEN')
+        if not access_token:
+            logger.error("No FACEBOOK_ACCESS_TOKEN found")
+            return False
+            
+        url = "https://graph.instagram.com/me/subscribed_apps"
+        params = {
+            "subscribed_fields": "comments",
+            "access_token": access_token
+        }
+        
+        logger.info("Enabling webhook subscriptions...")
+        response = requests.post(url, params=params)
+        
+        if response.status_code == 200:
+            logger.info("Successfully enabled webhook subscriptions")
+            return True
+        else:
+            logger.error(f"Failed to enable subscriptions: {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error enabling subscriptions: {e}")
+        return False
+
 # Initialize on module load (will only happen once)
 init_once()
+enable_webhook_subscriptions()
 
 def verify_webhook_signature(request_data, signature_header):
     """Verify that the webhook request came from Instagram"""
