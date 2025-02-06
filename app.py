@@ -166,16 +166,22 @@ def init_once():
 def enable_webhook_subscriptions():
     """Enable webhook subscriptions for the Instagram account"""
     try:
-        global page_access_token, page_id, instagram_account
+        global instagram_account
         
-        if not page_access_token or not page_id or not instagram_account:
+        app_id = os.getenv('INSTAGRAM_APP_ID')
+        app_secret = os.getenv('APP_SECRET')
+        
+        if not app_id or not app_secret or not instagram_account:
             logger.error("Missing required credentials")
             return False
+            
+        # Generate app access token
+        app_access_token = f"{app_id}|{app_secret}"
             
         # Subscribe to Instagram comments and mentions
         insta_url = f"https://graph.facebook.com/v19.0/{instagram_account['id']}/subscribed_apps"
         insta_params = {
-            "access_token": page_access_token,
+            "access_token": app_access_token,
             "subscribed_fields": "comments,mentions"
         }
         
