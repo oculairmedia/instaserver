@@ -127,13 +127,33 @@ def log_config():
     else:
         logger.warning("No Instagram account information available")
 
+# Initialize Flask app
 load_dotenv()
-
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Log startup configuration
-log_config()
+# Global variables for Instagram account info
+instagram_account = None
+
+def init_once():
+    """Initialize things that should only happen once"""
+    global instagram_account
+    
+    # Only initialize if not already done
+    if instagram_account is None:
+        log_config()
+        instagram_account = get_instagram_account_info()
+        
+        if instagram_account:
+            logger.info(f"Account ID: {instagram_account.get('id')}")
+            logger.info(f"Name: {instagram_account.get('name')}")
+            logger.info(f"Username: @{instagram_account.get('username')}")
+            logger.info(f"Profile Picture: {instagram_account.get('profile_picture_url')}")
+        else:
+            logger.warning("No Instagram account information available")
+
+# Initialize on module load (will only happen once)
+init_once()
 
 def verify_webhook_signature(request_data, signature_header):
     """Verify that the webhook request came from Instagram"""
