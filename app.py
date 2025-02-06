@@ -134,23 +134,31 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Global variables for Instagram account info
+# Global variables for account info
 instagram_account = None
+page_access_token = None
+page_id = None
 
 def init_once():
     """Initialize things that should only happen once"""
-    global instagram_account
+    global instagram_account, page_access_token, page_id
     
     # Only initialize if not already done
     if instagram_account is None:
         log_config()
-        instagram_account = get_instagram_account_info()
+        account_info = get_instagram_account_info()
         
-        if instagram_account:
-            logger.info(f"Account ID: {instagram_account.get('id')}")
-            logger.info(f"Name: {instagram_account.get('name')}")
-            logger.info(f"Username: @{instagram_account.get('username')}")
-            logger.info(f"Profile Picture: {instagram_account.get('profile_picture_url')}")
+        if account_info:
+            instagram_account = account_info
+            page_access_token = account_info.get('page_access_token')
+            page_id = account_info.get('page_id')
+            
+            logger.info(f"Account ID: {account_info.get('id')}")
+            logger.info(f"Name: {account_info.get('name')}")
+            logger.info(f"Username: @{account_info.get('username')}")
+            logger.info(f"Profile Picture: {account_info.get('profile_picture_url')}")
+            logger.info(f"Page ID: {page_id}")
+            logger.debug(f"Page Access Token: {page_access_token[:10]}...")
         else:
             logger.warning("No Instagram account information available")
 
@@ -158,23 +166,13 @@ def init_once():
 def enable_webhook_subscriptions():
     """Enable webhook subscriptions for the Instagram account"""
     try:
-        access_token = os.getenv('FACEBOOK_ACCESS_TOKEN')
-        if not access_token:
-            logger.error("No FACEBOOK_ACCESS_TOKEN found")
+        global page_access_token, page_id
+        
+        if not page_access_token or not page_id:
+            logger.error("No page access token or page ID available")
             return False
             
-        # First get the page access token
-        page_info = get_instagram_account_info()
-        if not page_info:
-            logger.error("Could not get page info")
-            return False
-            
-        page_access_token = page_info.get('page_access_token')
-        if not page_access_token:
-            logger.error("No page access token found")
-            return False
-            
-        url = f"https://graph.facebook.com/v19.0/{page_info['page_id']}/subscribed_apps"
+        url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
         params = {
             "subscribed_fields": "comments",
             "access_token": page_access_token
