@@ -176,7 +176,7 @@ def enable_webhook_subscriptions():
         insta_url = f"https://graph.facebook.com/v19.0/{instagram_account['id']}/subscribed_apps"
         insta_params = {
             "access_token": page_access_token,
-            "subscribed_fields": "comments,mention"
+            "subscribed_fields": "comments,mentions"
         }
         
         logger.info("Subscribing to Instagram webhooks...")
