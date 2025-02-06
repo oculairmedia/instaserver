@@ -194,8 +194,21 @@ def enable_webhook_subscriptions():
         return False
 
 # Initialize on module load (will only happen once)
-init_once()
-enable_webhook_subscriptions()
+def initialize_app():
+    """Initialize the application and enable webhooks"""
+    init_once()
+    
+    if page_access_token and page_id:
+        logger.info(f"Using page ID: {page_id}")
+        logger.info("Attempting to enable webhook subscriptions...")
+        if enable_webhook_subscriptions():
+            logger.info("Webhook subscriptions enabled successfully")
+        else:
+            logger.error("Failed to enable webhook subscriptions")
+    else:
+        logger.error("Missing page access token or page ID - cannot enable webhooks")
+
+initialize_app()
 
 def verify_webhook_signature(request_data, signature_header):
     """Verify that the webhook request came from Instagram"""
