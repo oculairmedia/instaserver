@@ -184,7 +184,7 @@ def enable_webhook_subscriptions():
             "access_token": app_access_token,
             "object": "instagram",
             "callback_url": "https://instagram.oculair.ca/webhook",
-            "fields": "comments,mentions",
+            "fields": "mention",
             "verify_token": os.getenv('WEBHOOK_VERIFY_TOKEN')
         }
         
@@ -204,7 +204,7 @@ def enable_webhook_subscriptions():
         insta_url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
         insta_params = {
             "access_token": page_access_token,  # Use page access token for Instagram subscription
-            "subscribed_fields": "comments,mentions",
+            "subscribed_fields": "mention",
             "object": "instagram"
         }
         
@@ -528,27 +528,27 @@ def webhook_handle_internal(data, signature_valid=True, is_test=False):
                 logger.debug(f"Processing entry: {json.dumps(entry, indent=2)}")
                 for change in entry.get('changes', []):
                     logger.debug(f"Processing change: {json.dumps(change, indent=2)}")
-                    if change.get('field') == 'comments':
-                        comment_data = change.get('value', {})
-                        if comment_data:
-                            username = comment_data.get('from', {}).get('username')
-                            text = comment_data.get('text')
+                    if change.get('field') == 'mention':
+                        mention_data = change.get('value', {})
+                        if mention_data:
+                            username = mention_data.get('username')
+                            text = mention_data.get('comment_text')
                             
                             if username and text:
-                                comment_id = comment_data.get('id')
-                                media_id = comment_data.get('media', {}).get('id')
+                                mention_id = mention_data.get('comment_id')
+                                media_id = mention_data.get('media_id')
                                 
-                                if not comment_id:
-                                    logger.warning("Comment data missing ID")
+                                if not mention_id:
+                                    logger.warning("Mention data missing ID")
                                     continue
                                     
-                                if not is_test and is_comment_processed(comment_id):
-                                    logger.info(f"Skipping already processed comment {comment_id}")
+                                if not is_test and is_comment_processed(mention_id):
+                                    logger.info(f"Skipping already processed mention {mention_id}")
                                     continue
                                     
-                                logger.info(f"New comment detected from @{username}")
-                                logger.info(f"Comment text: {text}")
-                                logger.info(f"Comment ID: {comment_id}")
+                                logger.info(f"New mention detected from @{username}")
+                                logger.info(f"Mention text: {text}")
+                                logger.info(f"Mention ID: {mention_id}")
                                 
                                 # Add to recent webhooks
                                 webhook_entry = {
