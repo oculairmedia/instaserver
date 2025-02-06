@@ -22,4 +22,4 @@ USER appuser
 EXPOSE 54068
 
 # Command to run the application with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:54068", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:54068", "--timeout", "120", "--workers", "2", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:app"]
