@@ -83,7 +83,9 @@ def get_instagram_account_info():
                     'id': insta_account['id'],
                     'username': insta_account['username'],
                     'name': page['name'],
-                    'profile_picture_url': insta_account.get('profile_picture_url')
+                    'profile_picture_url': insta_account.get('profile_picture_url'),
+                    'page_id': page['id'],
+                    'page_access_token': page['access_token']
                 }
         
         logger.error("No Instagram Business Account found in any Facebook Page")
@@ -161,13 +163,25 @@ def enable_webhook_subscriptions():
             logger.error("No FACEBOOK_ACCESS_TOKEN found")
             return False
             
-        url = "https://graph.instagram.com/me/subscribed_apps"
+        # First get the page access token
+        page_info = get_instagram_account_info()
+        if not page_info:
+            logger.error("Could not get page info")
+            return False
+            
+        page_access_token = page_info.get('page_access_token')
+        if not page_access_token:
+            logger.error("No page access token found")
+            return False
+            
+        url = f"https://graph.facebook.com/v19.0/{page_info['page_id']}/subscribed_apps"
         params = {
             "subscribed_fields": "comments",
-            "access_token": access_token
+            "access_token": page_access_token
         }
         
         logger.info("Enabling webhook subscriptions...")
+        logger.debug(f"Using URL: {url}")
         response = requests.post(url, params=params)
         
         if response.status_code == 200:
