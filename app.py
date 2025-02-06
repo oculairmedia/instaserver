@@ -371,15 +371,6 @@ def webhook_handle():
                                 if not comment_id:
                                     logger.warning("Comment data missing ID")
                                     continue
-                                
-                                if not media_id:
-                                    logger.warning("Comment data missing media ID")
-                                    continue
-                                
-                                # Verify this comment is for our Instagram account
-                                if INSTAGRAM_ACCOUNT_ID and not media_id.startswith(INSTAGRAM_ACCOUNT_ID):
-                                    logger.warning(f"Skipping comment for different Instagram account. Expected: {INSTAGRAM_ACCOUNT_ID}, Got: {media_id}")
-                                    continue
                                     
                                 if is_comment_processed(comment_id):
                                     logger.info(f"Skipping already processed comment {comment_id}")
