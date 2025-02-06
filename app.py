@@ -344,14 +344,91 @@ def notify_letta(username, comment):
         logger.error(f"Full error: {str(e)}")
         return False
 
+# Store API responses and webhook history
+api_responses = {
+    'pages': None,
+    'page_subscription': None,
+    'instagram_subscription': None
+}
+recent_webhooks = []
+MAX_WEBHOOKS = 10
+
 @app.route('/')
 def index():
     """Main page"""
     try:
-        return render_template('index.html', instagram_account=instagram_account or {})
+        # Get environment variables (masked)
+        env_vars = {
+            'INSTAGRAM_APP_ID': os.getenv('INSTAGRAM_APP_ID'),
+            'APP_SECRET': os.getenv('APP_SECRET'),
+            'WEBHOOK_VERIFY_TOKEN': os.getenv('WEBHOOK_VERIFY_TOKEN'),
+            'FACEBOOK_ACCESS_TOKEN': os.getenv('FACEBOOK_ACCESS_TOKEN')
+        }
+        
+        return render_template(
+            'index.html',
+            instagram_account=instagram_account or {},
+            env=env_vars,
+            api_responses=api_responses,
+            recent_webhooks=recent_webhooks
+        )
     except Exception as e:
         logger.error(f"Error rendering index: {str(e)}", exc_info=True)
         return f"Error: {str(e)}", 500
+
+@app.route('/debug/test-webhook', methods=['POST'])
+def test_webhook():
+    """Send a test webhook"""
+    try:
+        test_data = {
+            "entry": [{
+                "id": "0",
+                "time": int(datetime.now().timestamp()),
+                "changes": [{
+                    "field": "comments",
+                    "value": {
+                        "from": {
+                            "id": "test_user_id",
+                            "username": "test_user"
+                        },
+                        "text": "This is a test comment",
+                        "id": f"test_{int(datetime.now().timestamp())}",
+                        "media": {
+                            "id": instagram_account['id'] if instagram_account else "test_media_id"
+                        }
+                    }
+                }]
+            }],
+            "object": "instagram"
+        }
+        
+        # Process the test webhook
+        webhook_handle_internal(test_data, is_test=True)
+        
+        return jsonify({"success": True, "message": "Test webhook processed"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/debug/refresh-subscriptions', methods=['POST'])
+def refresh_subscriptions():
+    """Refresh webhook subscriptions"""
+    try:
+        if enable_webhook_subscriptions():
+            return jsonify({"success": True, "message": "Subscriptions refreshed"})
+        else:
+            return jsonify({"success": False, "error": "Failed to refresh subscriptions"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/debug/clear-history', methods=['POST'])
+def clear_history():
+    """Clear webhook history"""
+    try:
+        global recent_webhooks
+        recent_webhooks = []
+        return jsonify({"success": True, "message": "History cleared"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/webhook', methods=['GET'])
 def webhook_verify():
@@ -406,8 +483,10 @@ def webhook_handle():
     logger.info(f"X-Hub-Signature-256 header: {sha256_sig}")
     
     # Try SHA1 signature first
+    signature_valid = False
     if sha1_sig and verify_webhook_signature(raw_data, sha1_sig):
         logger.info("SHA1 signature verification successful")
+        signature_valid = True
     else:
         logger.error("Signature verification failed")
         logger.error(f"APP_SECRET length: {len(os.getenv('APP_SECRET', ''))}")
@@ -417,13 +496,16 @@ def webhook_handle():
     # Parse and log JSON data
     try:
         data = request.json
-        logger.debug(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+        return webhook_handle_internal(data, signature_valid)
     except Exception as e:
         logger.error(f"Failed to parse JSON data: {str(e)}")
         return 'Invalid JSON', 400
-    
+
+def webhook_handle_internal(data, signature_valid=True, is_test=False):
+    """Internal webhook handling logic"""
     try:
-        # Handle the webhook
+        logger.debug(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+        
         if data.get('object') == 'instagram':
             logger.info("Processing Instagram webhook")
             for entry in data.get('entry', []):
@@ -444,7 +526,7 @@ def webhook_handle():
                                     logger.warning("Comment data missing ID")
                                     continue
                                     
-                                if is_comment_processed(comment_id):
+                                if not is_test and is_comment_processed(comment_id):
                                     logger.info(f"Skipping already processed comment {comment_id}")
                                     continue
                                     
@@ -452,11 +534,24 @@ def webhook_handle():
                                 logger.info(f"Comment text: {text}")
                                 logger.info(f"Comment ID: {comment_id}")
                                 
+                                # Add to recent webhooks
+                                webhook_entry = {
+                                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                    'signature_valid': signature_valid,
+                                    'username': username,
+                                    'text': text,
+                                    'raw_data': data
+                                }
+                                recent_webhooks.insert(0, webhook_entry)
+                                if len(recent_webhooks) > MAX_WEBHOOKS:
+                                    recent_webhooks.pop()
+                                
                                 # Send notification to Letta
                                 if notify_letta(username, text):
                                     # Only mark as processed if notification was successful
-                                    add_processed_comment(comment_id)
-                                    logger.info(f"Marked comment {comment_id} as processed")
+                                    if not is_test:
+                                        add_processed_comment(comment_id)
+                                        logger.info(f"Marked comment {comment_id} as processed")
                             else:
                                 logger.warning("Comment data missing username or text")
                                 logger.debug(f"Comment data: {json.dumps(comment_data, indent=2)}")
