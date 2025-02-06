@@ -183,7 +183,7 @@ def enable_webhook_subscriptions():
         app_params = {
             "access_token": app_access_token,
             "object": "instagram",
-            "callback_url": f"http://localhost:50409/webhook",
+            "callback_url": "https://instagram.oculair.ca/webhook",
             "fields": "comments,mentions",
             "verify_token": os.getenv('WEBHOOK_VERIFY_TOKEN')
         }
@@ -581,4 +581,4 @@ def webhook_handle_internal(data, signature_valid=True, is_test=False):
 if __name__ == '__main__':
     # Run the Flask app
     port = int(os.getenv('PORT', 54068))  # Using the provided port
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=True)  # Enable debug mode for better error messages
